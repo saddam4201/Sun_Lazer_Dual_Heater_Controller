@@ -7,7 +7,10 @@ typedef enum {
     SCREEN_HOME = 0,
     SCREEN_PROGRAM_SELECT,
     SCREEN_PROGRAM_EDIT,
-    SCREEN_SERVICE
+    SCREEN_TIMER_EDIT,
+    SCREEN_PID_TUNING,
+    SCREEN_SERVICE,
+    SCREEN_RTC_SET
 } UIScreen_t;
 
 extern UIScreen_t currentScreen;

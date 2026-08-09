@@ -81,6 +81,14 @@ struct ProgramRecipe_t {
     uint32_t process_time_sec;
     float torque_limit_nm;
     float temp_tolerance_c;
+
+    // Per-program PID tunings
+    float h1_Kp;
+    float h1_Ki;
+    float h1_Kd;
+    float h2_Kp;
+    float h2_Ki;
+    float h2_Kd;
 };
 
 // Global Real-Time System Status Data
@@ -89,6 +97,7 @@ struct SystemStatus_t {
     float h1_actual_c;
     float h2_actual_c;
     float current_torque_nm;
+    float max_torque_nm;          // maximum torque observed during current run
     uint32_t remaining_time_sec;
     bool down_limit_active;
     bool home_limit_active;
@@ -97,6 +106,8 @@ struct SystemStatus_t {
     uint8_t active_program_idx;
     char alarm_msg[32];
 };
+
+#define LOG_RECENT_COUNT 10 // number of recent logs kept in RAM; changeable
 
 // Shared Global Variables
 extern TFT_eSPI tft;

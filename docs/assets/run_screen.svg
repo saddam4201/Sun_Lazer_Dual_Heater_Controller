@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320">
+  <rect width="100%" height="100%" fill="#0b2b3a"/>
+  <text x="16" y="30" font-family="Arial" font-size="18" fill="#ffffff">SUN LAZER — Dual Heater Controller</text>
+  <rect x="12" y="40" width="456" height="180" rx="6" fill="#072029" stroke="#2fa4d6" stroke-width="2"/>
+
+  <text x="26" y="72" font-family="Arial" font-size="16" fill="#ffffff">Program: <tspan fill="#ffd36b">Heat_Program_1</tspan></text>
+  <text x="340" y="72" font-family="Arial" font-size="14" fill="#cfeafc">Time: 00:12:34</text>
+
+  <text x="28" y="106" font-family="Arial" font-size="14" fill="#ffffff">H1 Set: <tspan fill="#ffb86b">180.0 C</tspan></text>
+  <text x="220" y="106" font-family="Arial" font-size="14" fill="#ffffff">H1 Act: <tspan fill="#9ffea7">178.6 C</tspan></text>
+  <rect x="28" y="114" width="420" height="14" rx="6" fill="#0b3b2a"/>
+  <rect x="28" y="114" width="360" height="14" rx="6" fill="#70c1b3"/>
+
+  <text x="28" y="152" font-family="Arial" font-size="14" fill="#ffffff">H2 Set: <tspan fill="#ffb86b">175.0 C</tspan></text>
+  <text x="220" y="152" font-family="Arial" font-size="14" fill="#ffffff">H2 Act: <tspan fill="#9ffea7">174.1 C</tspan></text>
+  <rect x="28" y="160" width="420" height="14" rx="6" fill="#0b3b2a"/>
+  <rect x="28" y="160" width="320" height="14" rx="6" fill="#72a6ff"/>
+
+  <text x="28" y="200" font-family="Arial" font-size="14" fill="#ffffff">Torque: <tspan fill="#ffd36b">2.3 Nm</tspan>   Max: <tspan fill="#ffd36b">3.1 Nm</tspan></text>
+  <text x="340" y="200" font-family="Arial" font-size="13" fill="#cfeafc">Status: <tspan fill="#9ffea7">RUNNING</tspan></text>
+
+  <g transform="translate(24,236)">
+    <rect x="0" y="0" width="100" height="56" rx="6" fill="#1a4a5a" stroke="#3db0d6"/>
+    <text x="14" y="34" font-family="Arial" font-size="14" fill="#ffffff">UP</text>
+
+    <rect x="120" y="0" width="100" height="56" rx="6" fill="#1a4a5a" stroke="#3db0d6"/>
+    <text x="148" y="34" font-family="Arial" font-size="14" fill="#ffffff">DOWN</text>
+
+    <rect x="240" y="0" width="100" height="56" rx="6" fill="#1a4a5a" stroke="#3db0d6"/>
+    <text x="272" y="34" font-family="Arial" font-size="14" fill="#ffffff">LEFT</text>
+
+    <rect x="360" y="0" width="100" height="56" rx="6" fill="#1a4a5a" stroke="#3db0d6"/>
+    <text x="394" y="34" font-family="Arial" font-size="14" fill="#ffffff">OK</text>
+  </g>
+
+  <text x="16" y="306" font-family="Arial" font-size="11" fill="#9fc1d6">SD: OK   RTC: OK   Alarms: 0</text>
+</svg>

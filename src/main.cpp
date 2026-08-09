@@ -3,6 +3,7 @@
 #include "storage.h"
 #include "display_ui.h"
 #include "control_tasks.h"
+#include "rtc.h"
 
 // Define Global Objects
 TFT_eSPI tft = TFT_eSPI();
@@ -49,7 +50,7 @@ void setup() {
 
     // Sync Structures
     xSemaphoreSPI = xSemaphoreCreateMutex();
-    xLogQueue = xQueueCreate(10, 128);
+    xLogQueue = xQueueCreate(10, 256);
 
     // Hardware SPI & Driver Setup
     SPI.begin(PIN_VSPI_SCK, PIN_VSPI_MISO, PIN_VSPI_MOSI);
@@ -62,8 +63,14 @@ void setup() {
     torqueScale.set_scale(42050.0f);
     torqueScale.tare();
 
-    initStorageModules();
+    bool sd_ok = initStorageModules();
     loadRecipesFromNVS();
+    bool rtc_ok = initRTC();
+
+    // Boot-time diagnostics
+    DEBUG_PRINTF("[BOOT] Debug TP GPIO: %d\n", DEBUG_TP_GPIO);
+    DEBUG_PRINTF("[BOOT] SD present: %s\n", sd_ok ? "YES" : "NO");
+    DEBUG_PRINTF("[BOOT] RTC present: %s\n", rtc_ok ? "YES" : "NO");
 
     // Ensure system status structure is zeroed to avoid transient garbage on boot
     memset(&sysStatus, 0, sizeof(sysStatus));

@@ -1,0 +1,89 @@
+openapi: 3.0.3
+info:
+  title: Sun Lazer Dual Heater Controller — Web API
+  version: 1.0.0
+  description: Minimal web API exposed by the controller. Endpoints implemented in firmware: RTC read/write. Additional endpoints (recent logs) are suggested but may not be present; check source before use.
+servers:
+  - url: http://{host}
+    variables:
+      host:
+        default: 192.168.4.1
+paths:
+  /rtc:
+    get:
+      summary: Get current RTC time
+      description: Returns the current RTC time as ISO 8601 string if RTC present; otherwise returns an error message.
+      responses:
+        '200':
+          description: Current date-time
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  iso:
+                    type: string
+                    example: '2026-08-10T04:24:00'
+        '500':
+          description: RTC not available or error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: 'RTC not initialized'
+  /rtc/set:
+    get:
+      summary: Set RTC time (validated)
+      description: |
+        Set the DS3231 RTC using an ISO 8601 datetime string. The firmware validates month/day and leap years before writing.
+        Example query: /rtc/set?iso=2026-08-10T04:24:00
+      parameters:
+        - in: query
+          name: iso
+          required: true
+          schema:
+            type: string
+            example: '2026-08-10T04:24:00'
+          description: ISO 8601 date-time to set the RTC to (local time assumed)
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+                    example: 'RTC updated'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: 'Invalid date: 2026-02-30'
+        '500':
+          description: RTC write failure
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: 'RTC write error'
+components: {}
+
+# Notes:
+# - Only /rtc and /rtc/set are documented because they are implemented and validated in the firmware per recent changes.
+# - If you want a /recent_logs or /logs endpoint (JSON or CSV download), it can be added to the web server module in src/rtc.cpp or src/display_ui.cpp.
+# - Example curl usage:
+#   curl http://192.168.4.1/rtc
+#   curl "http://192.168.4.1/rtc/set?iso=2026-08-10T04:24:00"

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320">
+  <rect width="100%" height="100%" fill="#07222b"/>
+  <text x="18" y="32" font-family="Arial" font-size="18" fill="#ffffff">RTC Set</text>
+  <rect x="14" y="48" width="452" height="200" rx="8" fill="#052029" stroke="#3db0d6" stroke-width="2"/>
+
+  <g font-family="Arial" font-size="16" fill="#cfeafc">
+    <text x="40" y="96">Year: <tspan fill="#ffd36b">2026</tspan></text>
+    <text x="200" y="96">Month: <tspan fill="#ffd36b">08</tspan></text>
+    <text x="320" y="96">Day: <tspan fill="#ffd36b">10</tspan></text>
+
+    <text x="40" y="140">Hour: <tspan fill="#ffd36b">04</tspan></text>
+    <text x="160" y="140">Min: <tspan fill="#ffd36b">24</tspan></text>
+    <text x="260" y="140">Sec: <tspan fill="#ffd36b">00</tspan></text>
+  </g>
+
+  <text x="40" y="180" font-family="Arial" font-size="12" fill="#9fd8f0">Validation: month/day and leap year checked on save.</text>
+
+  <g transform="translate(120,200)">
+    <rect x="0" y="0" width="100" height="48" rx="6" fill="#143f4e" stroke="#3db0d6"/>
+    <text x="28" y="32" font-family="Arial" font-size="14" fill="#ffffff">SAVE</text>
+    <rect x="160" y="0" width="120" height="48" rx="6" fill="#143f4e" stroke="#3db0d6"/>
+    <text x="198" y="32" font-family="Arial" font-size="14" fill="#ffffff">CANCEL</text>
+  </g>
+
+  <text x="16" y="306" font-family="Arial" font-size="11" fill="#9fc1d6">On success: confirmation popup and short beep/LED blink.</text>
+</svg>

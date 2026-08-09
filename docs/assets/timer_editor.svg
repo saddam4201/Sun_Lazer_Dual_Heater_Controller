@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320">
+  <rect width="100%" height="100%" fill="#08222a"/>
+  <text x="20" y="32" font-family="Arial" font-size="18" fill="#ffffff">Timer Editor — HH : MM : SS</text>
+  <rect x="16" y="48" width="448" height="200" rx="8" fill="#05202a" stroke="#3da6c6" stroke-width="2"/>
+
+  <text x="40" y="98" font-family="Arial" font-size="16" fill="#cfeafc">Program: <tspan fill="#ffd36b">Heat_Program_1</tspan></text>
+
+  <g font-family="Arial" font-size="42" fill="#ffffff">
+    <text x="120" y="160">00</text>
+    <text x="200" y="160">:</text>
+    <text x="220" y="160">12</text>
+    <text x="300" y="160">:</text>
+    <text x="320" y="160">34</text>
+  </g>
+
+  <text x="120" y="190" font-family="Arial" font-size="12" fill="#9fd8f0">Use UP/DOWN to change value, LEFT/RIGHT to move field</text>
+
+  <g transform="translate(120,220)">
+    <rect x="0" y="0" width="100" height="48" rx="6" fill="#1d4b59" stroke="#3db0d6"/>
+    <text x="28" y="32" font-family="Arial" font-size="14" fill="#ffffff">SAVE</text>
+    <rect x="160" y="0" width="120" height="48" rx="6" fill="#1d4b59" stroke="#3db0d6"/>
+    <text x="200" y="32" font-family="Arial" font-size="14" fill="#ffffff">CANCEL</text>
+  </g>
+
+  <text x="16" y="306" font-family="Arial" font-size="11" fill="#9fc1d6">Default step: 1s</text>
+</svg>

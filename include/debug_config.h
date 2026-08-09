@@ -2,11 +2,55 @@
 #define DEBUG_CONFIG_H
 
 #include <Arduino.h>
+#include "config.h"  // bring pin definitions for conflict checks
+
+// Compile-time checks to prevent assigning the debug test-point to pins used by critical hardware
+
 
 // Set to 1 for test development; set to 0 for production release
-#define ENABLE_DEBUG_TEST_POINTS 0
-#define DEBUG_TP_GPIO 26 // Disabled in this build to avoid GPIO conflicts with buttons
+#define ENABLE_DEBUG_TEST_POINTS 1
+#define DEBUG_TP_GPIO 24 // Moved to GPIO24 (user selected) to avoid SD CS and button conflicts
 
+// Prevent accidental pin collisions at compile-time
+#if defined(PIN_SD_CS) && (DEBUG_TP_GPIO == PIN_SD_CS)
+  #error "DEBUG_TP_GPIO collides with PIN_SD_CS (SD card chip-select). Choose a different debug pin."
+#endif
+
+#if defined(PIN_BTN_UP) && (DEBUG_TP_GPIO == PIN_BTN_UP)
+  #error "DEBUG_TP_GPIO collides with PIN_BTN_UP. Choose a different debug pin."
+#endif
+#if defined(PIN_BTN_DOWN) && (DEBUG_TP_GPIO == PIN_BTN_DOWN)
+  #error "DEBUG_TP_GPIO collides with PIN_BTN_DOWN. Choose a different debug pin."
+#endif
+#if defined(PIN_BTN_RIGHT) && (DEBUG_TP_GPIO == PIN_BTN_RIGHT)
+  #error "DEBUG_TP_GPIO collides with PIN_BTN_RIGHT. Choose a different debug pin."
+#endif
+#if defined(PIN_BTN_OK) && (DEBUG_TP_GPIO == PIN_BTN_OK)
+  #error "DEBUG_TP_GPIO collides with PIN_BTN_OK. Choose a different debug pin."
+#endif
+#if defined(PIN_BTN_LEFT) && (DEBUG_TP_GPIO == PIN_BTN_LEFT)
+  #error "DEBUG_TP_GPIO collides with PIN_BTN_LEFT. Choose a different debug pin."
+#endif
+
+// Additional critical pin collisions to guard against
+#if defined(PIN_MAX31865_CS1) && (DEBUG_TP_GPIO == PIN_MAX31865_CS1)
+  #error "DEBUG_TP_GPIO collides with PIN_MAX31865_CS1. Choose a different debug pin."
+#endif
+#if defined(PIN_MAX31865_CS2) && (DEBUG_TP_GPIO == PIN_MAX31865_CS2)
+  #error "DEBUG_TP_GPIO collides with PIN_MAX31865_CS2. Choose a different debug pin."
+#endif
+#if defined(PIN_SSR_1) && (DEBUG_TP_GPIO == PIN_SSR_1)
+  #error "DEBUG_TP_GPIO collides with PIN_SSR_1. Choose a different debug pin."
+#endif
+#if defined(PIN_SSR_2) && (DEBUG_TP_GPIO == PIN_SSR_2)
+  #error "DEBUG_TP_GPIO collides with PIN_SSR_2. Choose a different debug pin."
+#endif
+#if defined(PIN_MOTOR_DOWN) && (DEBUG_TP_GPIO == PIN_MOTOR_DOWN)
+  #error "DEBUG_TP_GPIO collides with PIN_MOTOR_DOWN. Choose a different debug pin."
+#endif
+#if defined(PIN_MOTOR_UP) && (DEBUG_TP_GPIO == PIN_MOTOR_UP)
+  #error "DEBUG_TP_GPIO collides with PIN_MOTOR_UP. Choose a different debug pin."
+#endif
 
 #if ENABLE_DEBUG_TEST_POINTS
   #define DEBUG_INIT(baud)             Serial.begin(baud)

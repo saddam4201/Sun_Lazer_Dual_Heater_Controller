@@ -2,6 +2,14 @@
 #include "storage.h"
 #include "display_ui.h"
 #include "debug_config.h"
+#include "rtc.h"
+#include "pid_helper.h"
+
+// PID variables for two heaters
+static double h1_input, h1_setpoint, h1_output;
+static double h2_input, h2_setpoint, h2_output;
+static PID h1_pid(&h1_input, &h1_output, &h1_setpoint, 1.0, 0.0, 0.0, DIRECT);
+static PID h2_pid(&h2_input, &h2_output, &h2_setpoint, 1.0, 0.0, 0.0, DIRECT);
 
 void transitionToState(ProcessState_t newState) {
     DEBUG_LOG_STATE_CHANGE(stateNames[sysStatus.currentState], stateNames[newState]);
@@ -27,6 +35,8 @@ void Task_SafetyAndControl(void *pvParameters) {
         if (torqueScale.is_ready()) {
             float raw_torque = fabsf(torqueScale.get_units(1));
             sysStatus.current_torque_nm = raw_torque;
+            // track max torque during a run
+            if (raw_torque > sysStatus.max_torque_nm) sysStatus.max_torque_nm = raw_torque;
 
             if (raw_torque > recipes[sysStatus.active_program_idx].torque_limit_nm &&
                (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_ALARM_FAULT)) {
@@ -44,6 +54,8 @@ void Task_SafetyAndControl(void *pvParameters) {
                 if (sysStatus.h1_actual_c < -10.0f || sysStatus.h2_actual_c < -10.0f) {
                     triggerSafetyShutdown("SENSOR DISCONNECT FAULT");
                 } else {
+                    // reset max torque for new run
+                    sysStatus.max_torque_nm = 0.0f;
                     movement_timer_ms = millis();
                     transitionToState(STATE_MOVE_DOWN);
                 }
@@ -109,10 +121,24 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_SAVE_RECORD: {
-                char logBuf[128];
-                snprintf(logBuf, sizeof(logBuf), "[REC] P%02d | H1:%.1f | H2:%.1f | Torque:%.1fNm | STATUS:OK",
-                         sysStatus.active_program_idx + 1, sysStatus.h1_actual_c, sysStatus.h2_actual_c, sysStatus.current_torque_nm);
-                xQueueSend(xLogQueue, &logBuf, 0);
+                // Compose CSV record with timestamp, program, set/actual temps, process time, max torque, result and alarm code
+                char csvBuf[256];
+                char ts[32];
+                getTimestampForLog(ts, sizeof(ts));
+                const char *result = (sysStatus.currentState == STATE_ALARM_FAULT) ? "ALARM" : "OK";
+                const char *alarmcode = (sysStatus.currentState == STATE_ALARM_FAULT) ? sysStatus.alarm_msg : "";
+                snprintf(csvBuf, sizeof(csvBuf), "%s,P%02d,%.1f,%.1f,%.1f,%.1f,%u,%.2f,%s,%s",
+                         ts,
+                         sysStatus.active_program_idx + 1,
+                         recipes[sysStatus.active_program_idx].h1_setpoint_c,
+                         sysStatus.h1_actual_c,
+                         recipes[sysStatus.active_program_idx].h2_setpoint_c,
+                         sysStatus.h2_actual_c,
+                         recipes[sysStatus.active_program_idx].process_time_sec,
+                         sysStatus.max_torque_nm,
+                         result,
+                         alarmcode);
+                xQueueSend(xLogQueue, csvBuf, 0);
                 transitionToState(STATE_PROCESS_COMPLETE);
                 break;
             }
@@ -139,6 +165,13 @@ void Task_SafetyAndControl(void *pvParameters) {
 
 void Task_TemperaturePID(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
+    const uint32_t cycleWindowMs = 2000; // time-proportional SSR cycle window
+
+    // Initialize PID controllers with settings
+    h1_pid.SetMode(AUTOMATIC);
+    h1_pid.SetOutputLimits(0, 100);
+    h2_pid.SetMode(AUTOMATIC);
+    h2_pid.SetOutputLimits(0, 100);
 
     for (;;) {
         if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(20)) == pdTRUE) {
@@ -147,11 +180,32 @@ void Task_TemperaturePID(void *pvParameters) {
             xSemaphoreGive(xSemaphoreSPI);
         }
 
+        // Update PID inputs and setpoints
+        h1_input = sysStatus.h1_actual_c;
+        h2_input = sysStatus.h2_actual_c;
+        h1_setpoint = recipes[sysStatus.active_program_idx].h1_setpoint_c;
+        h2_setpoint = recipes[sysStatus.active_program_idx].h2_setpoint_c;
+
+        // Update PID tunings from active program's settings
+        h1_pid.SetTunings(recipes[sysStatus.active_program_idx].h1_Kp,
+                          recipes[sysStatus.active_program_idx].h1_Ki,
+                          recipes[sysStatus.active_program_idx].h1_Kd);
+        h2_pid.SetTunings(recipes[sysStatus.active_program_idx].h2_Kp,
+                          recipes[sysStatus.active_program_idx].h2_Ki,
+                          recipes[sysStatus.active_program_idx].h2_Kd);
+
         if (sysStatus.currentState == STATE_HEAT_TO_SETPOINT || sysStatus.currentState == STATE_PROCESS_TIMER) {
-            float set1 = recipes[sysStatus.active_program_idx].h1_setpoint_c;
-            float set2 = recipes[sysStatus.active_program_idx].h2_setpoint_c;
-            digitalWrite(PIN_SSR_1, (sysStatus.h1_actual_c < set1) ? HIGH : LOW);
-            digitalWrite(PIN_SSR_2, (sysStatus.h2_actual_c < set2) ? HIGH : LOW);
+            // Compute PID
+            h1_pid.Compute();
+            h2_pid.Compute();
+
+            // Time-proportioning control for SSRs
+            uint32_t now = millis();
+            uint32_t pos = now % cycleWindowMs;
+            uint32_t onTime1 = (uint32_t)((h1_output / 100.0) * cycleWindowMs);
+            uint32_t onTime2 = (uint32_t)((h2_output / 100.0) * cycleWindowMs);
+            digitalWrite(PIN_SSR_1, (pos < onTime1) ? HIGH : LOW);
+            digitalWrite(PIN_SSR_2, (pos < onTime2) ? HIGH : LOW);
         } else {
             digitalWrite(PIN_SSR_1, LOW);
             digitalWrite(PIN_SSR_2, LOW);
@@ -187,10 +241,10 @@ void Task_UIAndWeb(void *pvParameters) {
 }
 
 void Task_Logger(void *pvParameters) {
-    char logBuffer[128];
+    char logBuffer[256];
 
     for (;;) {
-        if (xQueueReceive(xLogQueue, &logBuffer, portMAX_DELAY) == pdTRUE) {
+        if (xQueueReceive(xLogQueue, logBuffer, portMAX_DELAY) == pdTRUE) {
             if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(100)) == pdTRUE) {
                 logToSD(logBuffer);
                 xSemaphoreGive(xSemaphoreSPI);
