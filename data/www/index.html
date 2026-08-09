@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sun Lazer — Dual Heater Controller</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Sun Lazer — Dual Heater Controller</h1>
+    <div class="chips">
+      <span id="ipChip" class="chip">IP: --</span>
+      <span id="sdChip" class="chip">SD: --</span>
+      <span id="rtcChip" class="chip">RTC: --</span>
+    </div>
+  </header>
+
+  <nav class="nav">
+    <button data-target="dashboard" class="navbtn active">Dashboard</button>
+    <button data-target="programs" class="navbtn">Programs</button>
+    <button data-target="rtc" class="navbtn">RTC</button>
+    <button data-target="logs" class="navbtn">Logs</button>
+    <button data-target="service" class="navbtn">Service</button>
+  </nav>
+
+  <main>
+    <section id="dashboard" class="card visible">
+      <div class="grid">
+        <div class="card-item">
+          <h3>Heater 1</h3>
+          <div class="stat">Set: <span id="h1_set">--</span> °C</div>
+          <div class="stat">Actual: <span id="h1_act">--</span> °C</div>
+        </div>
+        <div class="card-item">
+          <h3>Heater 2</h3>
+          <div class="stat">Set: <span id="h2_set">--</span> °C</div>
+          <div class="stat">Actual: <span id="h2_act">--</span> °C</div>
+        </div>
+        <div class="card-item">
+          <h3>Torque</h3>
+          <div class="stat">Now: <span id="torque">--</span> Nm</div>
+          <div class="stat">Max: <span id="max_torque">--</span> Nm</div>
+        </div>
+        <div class="card-item">
+          <h3>Process</h3>
+          <div class="stat">Program: <span id="program">--</span></div>
+          <div class="stat">Elapsed: <span id="elapsed">--</span>s</div>
+          <div class="actions"><button id="btnToggle">Start / Stop</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="programs" class="card">
+      <h3>Programs</h3>
+      <p>Recipe list is optional — implement endpoints /programs to enable.</p>
+      <div id="programList">(No programs available)</div>
+    </section>
+
+    <section id="rtc" class="card">
+      <h3>RTC</h3>
+      <div>Current: <span id="rtc_now">--</span></div>
+      <div class="rtc-form">
+        <input id="rtc_iso" type="text" placeholder="YYYY-MM-DDTHH:MM:SS" aria-label="ISO datetime" />
+        <button id="btnSetRTC">Set RTC</button>
+      </div>
+      <div id="rtc_msg" class="msg"></div>
+    </section>
+
+    <section id="logs" class="card">
+      <h3>Logs</h3>
+      <div class="log-actions">
+        <a href="/logs" id="downloadLogs" class="btn">Download CSV</a>
+        <button id="btnFetchRecent" class="btn">Fetch Recent</button>
+      </div>
+      <div id="recentLogs">(No recent logs)</div>
+    </section>
+
+    <section id="service" class="card">
+      <h3>Service</h3>
+      <div class="service-actions">
+        <button id="btnMotorJog" class="btn">Motor Jog</button>
+        <button id="btnSSRTest" class="btn">SSR Test</button>
+        <button id="btnTare" class="btn">HX711 Tare</button>
+      </div>
+      <div id="serviceMsg" class="msg"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    <small>Device UI — firmware must implement HTTP endpoints: /status, /rtc, /rtc/set, /control/toggle, /logs</small>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
