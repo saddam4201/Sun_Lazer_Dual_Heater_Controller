@@ -1,0 +1,110 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#include <Arduino.h>
+#include <SPI.h>
+#include <TFT_eSPI.h>
+#include <Adafruit_MAX31865.h>
+#include <HX711.h>
+#include <Preferences.h>
+#include <WebServer.h>
+
+// VSPI Pins
+#define PIN_VSPI_SCK     18
+#define PIN_VSPI_MISO    19
+#define PIN_VSPI_MOSI    23
+
+// TFT & SD Chip Selects
+#define PIN_TFT_CS        5
+#define PIN_TFT_DC        2
+#define PIN_TFT_RST       4
+#define PIN_SD_CS        13
+
+// Sensor CS Pins
+#define PIN_MAX31865_CS1 14
+#define PIN_MAX31865_CS2 15
+
+// Torque Sensor Pins (TQ10 via HX711)
+#define PIN_HX711_DOUT   36
+#define PIN_HX711_SCK    12
+
+// Limit Switches - Active LOW (External 10k pull-ups required on GPIO 34/35)
+#define PIN_DOWN_LIMIT   34
+#define PIN_HOME_LIMIT   35
+
+// Push Buttons
+#define PIN_BTN_UP       32
+#define PIN_BTN_DOWN     33
+#define PIN_BTN_RIGHT    25
+#define PIN_BTN_OK       26
+#define PIN_BTN_LEFT     27
+
+// SSR & Motor Actuator Outputs
+#define PIN_SSR_1        16
+#define PIN_SSR_2        17
+#define PIN_MOTOR_DOWN   21
+#define PIN_MOTOR_UP     22
+
+// PT100 Constants
+#define RREF      430.0f
+#define RNOMINAL  100.0f
+
+// 13-State Machine Definition
+typedef enum {
+    STATE_IDLE = 1,
+    STATE_SAFETY_CHECK,
+    STATE_MOVE_DOWN,
+    STATE_DOWN_LIMIT,
+    STATE_HEAT_TO_SETPOINT,
+    STATE_TEMPERATURE_READY,
+    STATE_PROCESS_TIMER,
+    STATE_TIMER_COMPLETE,
+    STATE_MOVE_UP,
+    STATE_HOME_LIMIT,
+    STATE_SAVE_RECORD,
+    STATE_PROCESS_COMPLETE,
+    STATE_READY,
+    STATE_ALARM_FAULT
+} ProcessState_t;
+
+// Recipe Format for 10 Programs
+struct ProgramRecipe_t {
+    char name[16];
+    float h1_setpoint_c;
+    float h2_setpoint_c;
+    uint32_t process_time_sec;
+    float torque_limit_nm;
+    float temp_tolerance_c;
+};
+
+// Global Real-Time System Status Data
+struct SystemStatus_t {
+    ProcessState_t currentState;
+    float h1_actual_c;
+    float h2_actual_c;
+    float current_torque_nm;
+    uint32_t remaining_time_sec;
+    bool down_limit_active;
+    bool home_limit_active;
+    bool motor_down_running;
+    bool motor_up_running;
+    uint8_t active_program_idx;
+    char alarm_msg[32];
+};
+
+// Shared Global Variables
+extern TFT_eSPI tft;
+extern Adafruit_MAX31865 max1;
+extern Adafruit_MAX31865 max2;
+extern HX711 torqueScale;
+extern Preferences preferences;
+extern WebServer webServer;
+
+extern SemaphoreHandle_t xSemaphoreSPI;
+extern QueueHandle_t xLogQueue;
+
+extern ProgramRecipe_t recipes[10];
+extern SystemStatus_t sysStatus;
+extern const char* stateNames[];
+
+#endif // CONFIG_H
