@@ -15,7 +15,12 @@ void loadRecipesFromNVS() {
     for (int i = 0; i < 10; i++) {
         char key[16];
         snprintf(key, sizeof(key), "rec_%d", i);
-        if (!preferences.getBytes(key, &recipes[i], sizeof(ProgramRecipe_t))) {
+        size_t bytesRead = preferences.getBytes(key, &recipes[i], sizeof(ProgramRecipe_t));
+        if (bytesRead != sizeof(ProgramRecipe_t) || recipes[i].magic != RECIPE_MAGIC || recipes[i].version != RECIPE_VERSION) {
+            // No valid saved recipe found; populate defaults and set magic/version
+            memset(&recipes[i], 0, sizeof(ProgramRecipe_t));
+            recipes[i].magic = RECIPE_MAGIC;
+            recipes[i].version = RECIPE_VERSION;
             snprintf(recipes[i].name, sizeof(recipes[i].name), "Program %02d", i + 1);
             recipes[i].h1_setpoint_c = 150.0f;
             recipes[i].h2_setpoint_c = 150.0f;
@@ -28,6 +33,10 @@ void loadRecipesFromNVS() {
 }
 
 void saveRecipeToNVS(uint8_t index) {
+    // Ensure magic/version are present before writing
+    recipes[index].magic = RECIPE_MAGIC;
+    recipes[index].version = RECIPE_VERSION;
+
     preferences.begin("sun_lazer", false);
     char key[16];
     snprintf(key, sizeof(key), "rec_%d", index);

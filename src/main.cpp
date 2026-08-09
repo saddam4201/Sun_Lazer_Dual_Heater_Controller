@@ -65,6 +65,9 @@ void setup() {
     initStorageModules();
     loadRecipesFromNVS();
 
+    // Ensure system status structure is zeroed to avoid transient garbage on boot
+    memset(&sysStatus, 0, sizeof(sysStatus));
+
     sysStatus.currentState = STATE_IDLE;
     sysStatus.active_program_idx = 0;
 

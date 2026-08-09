@@ -133,18 +133,29 @@ void drawProgramSelectScreen() {
     tft.setTextColor(TFT_WHITE, TFT_NAVY);
     tft.drawString("SELECT RECIPE (P01 - P10)", 10, 5, 2);
 
-    for (int i = 0; i < 5; i++) {
+    const int items = 10;
+    const int startX = 20;
+    const int tempX = 180;
+    const int unitX = 220;
+    const int startY = 35;
+    const int lineH = 20; // tighter spacing to fit 10 lines
+
+    // clear the list area
+    tft.fillRect(0, startY - 5, 320, items * lineH + 10, TFT_BLACK);
+
+    for (int i = 0; i < items; i++) {
         uint8_t idx = i;
         uint16_t color = (sysStatus.active_program_idx == idx) ? TFT_YELLOW : TFT_WHITE;
         tft.setTextColor(color, TFT_BLACK);
-        tft.drawString(recipes[idx].name, 20, 35 + (i * 28), 2);
-        tft.drawFloat(recipes[idx].h1_setpoint_c, 0, 180, 35 + (i * 28), 2);
-        tft.drawString("C", 220, 35 + (i * 28), 2);
+        tft.drawString(recipes[idx].name, startX, startY + (i * lineH), 2);
+        tft.drawFloat(recipes[idx].h1_setpoint_c, 0, tempX, startY + (i * lineH), 2);
+        tft.drawString("C", unitX, startY + (i * lineH), 2);
     }
 
     tft.setTextColor(TFT_CYAN, TFT_BLACK);
     tft.drawString("[UP/DN]: Navigate | [OK/->]: Edit | [<-]: Back", 10, 215, 2);
 }
+
 
 void drawProgramEditScreen() {
     tft.fillRect(0, 0, 320, 25, TFT_NAVY);

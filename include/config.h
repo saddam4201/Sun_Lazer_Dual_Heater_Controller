@@ -49,6 +49,10 @@
 #define RREF      430.0f
 #define RNOMINAL  100.0f
 
+// Recipe storage validation
+#define RECIPE_MAGIC    0xABCD
+#define RECIPE_VERSION  1
+
 // 13-State Machine Definition
 typedef enum {
     STATE_IDLE = 1,
@@ -69,6 +73,8 @@ typedef enum {
 
 // Recipe Format for 10 Programs
 struct ProgramRecipe_t {
+    uint16_t magic;            // validation magic
+    uint8_t  version;          // storage struct version
     char name[16];
     float h1_setpoint_c;
     float h2_setpoint_c;

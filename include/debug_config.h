@@ -4,8 +4,9 @@
 #include <Arduino.h>
 
 // Set to 1 for test development; set to 0 for production release
-#define ENABLE_DEBUG_TEST_POINTS 1
-#define DEBUG_TP_GPIO 26 
+#define ENABLE_DEBUG_TEST_POINTS 0
+#define DEBUG_TP_GPIO 26 // Disabled in this build to avoid GPIO conflicts with buttons
+
 
 #if ENABLE_DEBUG_TEST_POINTS
   #define DEBUG_INIT(baud)             Serial.begin(baud)
