@@ -6,6 +6,7 @@
 bool initStorageModules();
 void loadRecipesFromNVS();
 void saveRecipeToNVS(uint8_t index);
+void saveAllRecipesToNVS();
 void logToSD(const char* logEntry);
 
 // Recent logs in RAM

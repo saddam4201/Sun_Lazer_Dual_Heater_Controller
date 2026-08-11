@@ -27,26 +27,29 @@ const char* stateNames[] = {
 
 void setup() {
     DEBUG_INIT(115200);
-    DEBUG_TP_INIT();
+#if ENABLE_SERIAL_TFT
+    // Ensure Serial is available for virtual display
+    Serial.begin(115200);
+#endif
 
-    // Actuator Pins
-    pinMode(PIN_SSR_1, OUTPUT);
-    pinMode(PIN_SSR_2, OUTPUT);
-    pinMode(PIN_MOTOR_DOWN, OUTPUT);
-    pinMode(PIN_MOTOR_UP, OUTPUT);
-    digitalWrite(PIN_SSR_1, LOW);
-    digitalWrite(PIN_SSR_2, LOW);
-    digitalWrite(PIN_MOTOR_DOWN, LOW);
-    digitalWrite(PIN_MOTOR_UP, LOW);
+    // Actuator Pins (safe-checked)
+    safePinMode(PIN_SSR_1, OUTPUT);
+    safePinMode(PIN_SSR_2, OUTPUT);
+    safePinMode(PIN_MOTOR_DOWN, OUTPUT);
+    safePinMode(PIN_MOTOR_UP, OUTPUT);
+    safeDigitalWrite(PIN_SSR_1, LOW);
+    safeDigitalWrite(PIN_SSR_2, LOW);
+    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+    safeDigitalWrite(PIN_MOTOR_UP, LOW);
 
-    // Sensor & Switch Inputs
-    pinMode(PIN_DOWN_LIMIT, INPUT);
-    pinMode(PIN_HOME_LIMIT, INPUT);
-    pinMode(PIN_BTN_UP, INPUT_PULLUP);
-    pinMode(PIN_BTN_DOWN, INPUT_PULLUP);
-    pinMode(PIN_BTN_RIGHT, INPUT_PULLUP);
-    pinMode(PIN_BTN_OK, INPUT_PULLUP);
-    pinMode(PIN_BTN_LEFT, INPUT_PULLUP);
+    // Sensor & Switch Inputs (safe-checked)
+    safePinMode(PIN_DOWN_LIMIT, INPUT);
+    safePinMode(PIN_HOME_LIMIT, INPUT);
+    safePinMode(PIN_BTN_UP, INPUT_PULLUP);
+    safePinMode(PIN_BTN_DOWN, INPUT_PULLUP);
+    safePinMode(PIN_BTN_RIGHT, INPUT_PULLUP);
+    safePinMode(PIN_BTN_OK, INPUT_PULLUP);
+    safePinMode(PIN_BTN_LEFT, INPUT_PULLUP);
 
     // Sync Structures
     xSemaphoreSPI = xSemaphoreCreateMutex();
@@ -68,7 +71,7 @@ void setup() {
     bool rtc_ok = initRTC();
 
     // Boot-time diagnostics
-    DEBUG_PRINTF("[BOOT] Debug TP GPIO: %d\n", DEBUG_TP_GPIO);
+    DEBUG_PRINTF("[BOOT] Debug TP: disabled\n");
     DEBUG_PRINTF("[BOOT] SD present: %s\n", sd_ok ? "YES" : "NO");
     DEBUG_PRINTF("[BOOT] RTC present: %s\n", rtc_ok ? "YES" : "NO");
 

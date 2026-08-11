@@ -3,12 +3,13 @@
 
 #include <Arduino.h>
 #include "config.h"  // bring pin definitions for conflict checks
+#include "gpio_safe.h"  // safe GPIO helpers (range-checked)
 
 // Compile-time checks to prevent assigning the debug test-point to pins used by critical hardware
 
 
 // Set to 1 for test development; set to 0 for production release
-#define ENABLE_DEBUG_TEST_POINTS 1
+#define ENABLE_DEBUG_TEST_POINTS 0 // debug test-point disabled (removed by user request)
 #define DEBUG_TP_GPIO 24 // Moved to GPIO24 (user selected) to avoid SD CS and button conflicts
 
 // Prevent accidental pin collisions at compile-time
@@ -57,10 +58,10 @@
   #define DEBUG_PRINT(x)               Serial.print(x)
   #define DEBUG_PRINTLN(x)             Serial.println(x)
   #define DEBUG_PRINTF(...)            Serial.printf(__VA_ARGS__)
-  #define DEBUG_TP_INIT()              pinMode(DEBUG_TP_GPIO, OUTPUT)
-  #define DEBUG_TP_HIGH()              digitalWrite(DEBUG_TP_GPIO, HIGH)
-  #define DEBUG_TP_LOW()               digitalWrite(DEBUG_TP_GPIO, LOW)
-  #define DEBUG_TP_TOGGLE()            digitalWrite(DEBUG_TP_GPIO, !digitalRead(DEBUG_TP_GPIO))
+  #define DEBUG_TP_INIT()              safePinMode(DEBUG_TP_GPIO, OUTPUT)
+  #define DEBUG_TP_HIGH()              safeDigitalWrite(DEBUG_TP_GPIO, HIGH)
+  #define DEBUG_TP_LOW()               safeDigitalWrite(DEBUG_TP_GPIO, LOW)
+  #define DEBUG_TP_TOGGLE()            safeDigitalWrite(DEBUG_TP_GPIO, !safeDigitalRead(DEBUG_TP_GPIO))
   #define DEBUG_LOG_STATE_CHANGE(o, n) Serial.printf("[TP_STATE] %s -> %s | Time: %lu ms\n", o, n, millis())
   #define DEBUG_LOG_SAFETY_TRIP(r, v)  Serial.printf("[TP_SAFETY_TRIP] Reason: %s | Value: %.2f\n", r, (float)v)
 #else

@@ -1,8 +1,10 @@
 #include "rtc.h"
+#include "debug_config.h"
+#include "config.h"
+
+#if ENABLE_RTC
 #include <Wire.h>
 #include <RTClib.h>
-#include "debug_config.h"
-
 static RTC_DS3231 rtc;
 
 bool initRTC() {
@@ -97,3 +99,38 @@ void addRTCWebHandlers(WebServer &server) {
         }
     });
 }
+
+#else // ENABLE_RTC == 0
+
+bool initRTC() {
+    DEBUG_PRINTLN("[RTC] Disabled at compile-time (ENABLE_RTC=0)");
+    return false;
+}
+
+const char* getTimestampForLog(char* buf, size_t len) {
+    // Fallback: use compile-time build timestamp
+    snprintf(buf, len, "%s %s", __DATE__, __TIME__);
+    return buf;
+}
+
+bool setRTCTime(uint16_t year, uint8_t month, uint8_t day, uint8_t hour, uint8_t minute, uint8_t second) {
+    (void)year; (void)month; (void)day; (void)hour; (void)minute; (void)second;
+    DEBUG_PRINTLN("[RTC] setRTCTime called but RTC disabled");
+    return false;
+}
+
+bool getRTCTimeComponents(uint16_t *year, uint8_t *month, uint8_t *day, uint8_t *hour, uint8_t *minute, uint8_t *second) {
+    (void)year; (void)month; (void)day; (void)hour; (void)minute; (void)second;
+    return false;
+}
+
+void addRTCWebHandlers(WebServer &server) {
+    server.on("/rtc", [&server]() {
+        server.send(404, "text/plain", "RTC disabled");
+    });
+    server.on("/rtc/set", [&server]() {
+        server.send(404, "text/plain", "RTC disabled");
+    });
+}
+
+#endif // ENABLE_RTC

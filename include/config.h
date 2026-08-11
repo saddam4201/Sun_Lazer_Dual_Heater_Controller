@@ -20,6 +20,21 @@
 #define PIN_TFT_RST       4
 #define PIN_SD_CS        13
 
+// Enable SD card support (set to 1 to enable SD logging and file operations)
+#ifndef ENABLE_SD_CARD
+#define ENABLE_SD_CARD 0
+#endif
+
+// Enable RTC support (set to 1 to enable DS3231 RTC features)
+#ifndef ENABLE_RTC
+#define ENABLE_RTC 0
+#endif
+
+// Enable a virtual TFT over Serial (for testing without a display)
+#ifndef ENABLE_SERIAL_TFT
+#define ENABLE_SERIAL_TFT 1
+#endif
+
 // Sensor CS Pins
 #define PIN_MAX31865_CS1 14
 #define PIN_MAX31865_CS2 15

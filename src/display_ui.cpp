@@ -3,6 +3,9 @@
 #include "storage.h"
 #include "debug_config.h"
 #include "rtc.h"
+#if ENABLE_SERIAL_TFT
+#include "serial_display.h"
+#endif
 #include <WiFi.h>
 
 UIScreen_t currentScreen = SCREEN_HOME;
@@ -65,6 +68,11 @@ void initDisplayAndWeb() {
     tft.setRotation(1); // 320x240 Landscape
     tft.fillScreen(TFT_BLACK);
     tft.drawString("SUN LAZER INITIALIZING...", 20, 110, 2);
+
+#if ENABLE_SERIAL_TFT
+    // init virtual serial display mirror for headless testing
+    vd_init();
+#endif
 
     WiFi.softAP("SunLazer_Config", "sunlazer123");
     setupWebServer();
@@ -253,22 +261,31 @@ void handleButtonInputs() {
                 }
                 rtcEdit_field = 0;
                 currentScreen = SCREEN_RTC_SET;
+            } else if (btnOk && btnLeft) {
+                // Save all current recipes to NVS (user-requested)
+                saveAllRecipesToNVS();
+#if ENABLE_SERIAL_TFT
+                vd_popup("All recipes saved to NVS.");
+#else
+                Serial.println("[NVS] All recipes saved to NVS.");
+#endif
+                // remain on service screen
             } else if (btnLeft) {
                 // cancel any active service tests
                 service_heater_test_active = false;
                 service_motor_test_active = false;
-                digitalWrite(PIN_SSR_1, LOW);
-                digitalWrite(PIN_SSR_2, LOW);
-                digitalWrite(PIN_MOTOR_DOWN, LOW);
-                digitalWrite(PIN_MOTOR_UP, LOW);
+                safeDigitalWrite(PIN_SSR_1, LOW);
+                safeDigitalWrite(PIN_SSR_2, LOW);
+                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                safeDigitalWrite(PIN_MOTOR_UP, LOW);
                 currentScreen = SCREEN_HOME;
             } else if (btnOk) {
                 // Heater test: toggle SSRs for 2 seconds
                 if (!service_heater_test_active) {
                     service_heater_test_active = true;
                     service_heater_test_start = millis();
-                    digitalWrite(PIN_SSR_1, HIGH);
-                    digitalWrite(PIN_SSR_2, HIGH);
+                    safeDigitalWrite(PIN_SSR_1, HIGH);
+                    safeDigitalWrite(PIN_SSR_2, HIGH);
                 }
             } else if (btnRight) {
                 // Motor jog down for 2 seconds (if down limit not active)
@@ -278,7 +295,7 @@ void handleButtonInputs() {
                     service_motor_down = true;
                     // put controller into READY so the safety task does not override motor
                     transitionToState(STATE_READY);
-                    digitalWrite(PIN_MOTOR_DOWN, HIGH);
+                    safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
                 }
             } else if (btnUp) {
                 // Motor jog up for 2 seconds (if home limit not active)
@@ -287,7 +304,7 @@ void handleButtonInputs() {
                     service_motor_test_start = millis();
                     service_motor_down = false;
                     transitionToState(STATE_READY);
-                    digitalWrite(PIN_MOTOR_UP, HIGH);
+                    safeDigitalWrite(PIN_MOTOR_UP, HIGH);
                 }
             } else if (btnDown && btnOk) {
                 // Enter RTC set screen (dedicated menu entry: Down + OK)
@@ -436,28 +453,41 @@ void drawServiceScreen() {
     tft.setTextColor(TFT_CYAN, TFT_BLACK);
     tft.drawString("[<-]: Back | [OK]: Heater Test | [->]: Motor Down | [UP]: Motor Up | [->]+[OK]: PID Tune", 10, 200, 2);
     tft.drawString("[DN]+[OK]: Set RTC", 10, 220, 2);
+    tft.drawString("[OK]+[<-]: Save Defaults to NVS", 10, 235, 2);
 }
 
 void updateTFTDisplay() {
     // handle service test timeouts
     if (service_heater_test_active && (millis() - service_heater_test_start > 2000)) {
         service_heater_test_active = false;
-        digitalWrite(PIN_SSR_1, LOW);
-        digitalWrite(PIN_SSR_2, LOW);
+        safeDigitalWrite(PIN_SSR_1, LOW);
+        safeDigitalWrite(PIN_SSR_2, LOW);
     }
     if (service_motor_test_active && (millis() - service_motor_test_start > 2000)) {
         service_motor_test_active = false;
-        digitalWrite(PIN_MOTOR_DOWN, LOW);
-        digitalWrite(PIN_MOTOR_UP, LOW);
+        safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+        safeDigitalWrite(PIN_MOTOR_UP, LOW);
         // return to idle state
         transitionToState(STATE_IDLE);
     }
 
     tft.fillScreen(TFT_BLACK);
     switch (currentScreen) {
-        case SCREEN_HOME: drawHomeScreen(); break;
-        case SCREEN_PROGRAM_SELECT: drawProgramSelectScreen(); break;
-        case SCREEN_PROGRAM_EDIT: drawProgramEditScreen(); break;
+        case SCREEN_HOME: drawHomeScreen();
+#if ENABLE_SERIAL_TFT
+            vd_drawHomeScreen();
+#endif
+            break;
+        case SCREEN_PROGRAM_SELECT: drawProgramSelectScreen();
+#if ENABLE_SERIAL_TFT
+            vd_drawProgramSelectScreen();
+#endif
+            break;
+        case SCREEN_PROGRAM_EDIT: drawProgramEditScreen();
+#if ENABLE_SERIAL_TFT
+            vd_drawProgramEditScreen();
+#endif
+            break;
         case SCREEN_TIMER_EDIT: {
             // draw timer editor
             tft.fillRect(0, 0, 320, 25, TFT_NAVY);
@@ -477,6 +507,9 @@ void updateTFTDisplay() {
 
             tft.setTextColor(TFT_CYAN, TFT_BLACK);
             tft.drawString("[UP/DN]: Change | [->]: Next | [OK]: Save | [<-]: Cancel", 10, 215, 2);
+#if ENABLE_SERIAL_TFT
+            vd_drawTimerEditor();
+#endif
             break;
         }
         case SCREEN_RTC_SET: {
@@ -512,6 +545,9 @@ void updateTFTDisplay() {
 
             tft.setTextColor(TFT_CYAN, TFT_BLACK);
             tft.drawString("[UP/DN]: Change | [->]: Next | [OK]: Save | [<-]: Cancel", 10, 215, 2);
+#if ENABLE_SERIAL_TFT
+            vd_drawRTCSetScreen();
+#endif
             break;
         }
         case SCREEN_PID_TUNING: {
@@ -547,9 +583,16 @@ void updateTFTDisplay() {
 
             tft.setTextColor(TFT_CYAN, TFT_BLACK);
             tft.drawString("[UP/DN]: Change | [->]: Next | [OK]: Save | [<-]: Back", 10, 215, 2);
+#if ENABLE_SERIAL_TFT
+            vd_drawPIDTuningScreen();
+#endif
             break;
         }
-        case SCREEN_SERVICE: drawServiceScreen(); break;
+        case SCREEN_SERVICE: drawServiceScreen();
+#if ENABLE_SERIAL_TFT
+            vd_drawServiceScreen();
+#endif
+            break;
     }
 
     // draw transient RTC confirmation popup if any

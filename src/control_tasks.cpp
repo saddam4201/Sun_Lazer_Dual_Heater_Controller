@@ -22,6 +22,14 @@ void triggerSafetyShutdown(const char* reason) {
     transitionToState(STATE_ALARM_FAULT);
 }
 
+/**
+ * @brief Task_SafetyAndControl: FreeRTOS task managing safety and control flow
+ * @details This task is responsible for managing the safety and control flow of the
+ *          system. It monitors torque sensors, checks for safety trips, and moves the
+ *          motor up and down. It also controls the SSR output for the heaters based on
+ *          the current state of the system.
+ * @param pvParameters not used
+ */
 void Task_SafetyAndControl(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     uint32_t movement_timer_ms = 0;
@@ -46,8 +54,8 @@ void Task_SafetyAndControl(void *pvParameters) {
 
         switch (sysStatus.currentState) {
             case STATE_IDLE:
-                digitalWrite(PIN_MOTOR_DOWN, LOW);
-                digitalWrite(PIN_MOTOR_UP, LOW);
+                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                safeDigitalWrite(PIN_MOTOR_UP, LOW);
                 break;
 
             case STATE_SAFETY_CHECK:
@@ -63,10 +71,10 @@ void Task_SafetyAndControl(void *pvParameters) {
 
             case STATE_MOVE_DOWN:
                 if (sysStatus.down_limit_active) {
-                    digitalWrite(PIN_MOTOR_DOWN, LOW);
+                    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
                     transitionToState(STATE_DOWN_LIMIT);
                 } else {
-                    digitalWrite(PIN_MOTOR_DOWN, HIGH);
+                        safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
                     if (millis() - movement_timer_ms > 30000) {
                         triggerSafetyShutdown("DOWN TRAVEL TIMEOUT");
                     }
@@ -74,7 +82,7 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_DOWN_LIMIT:
-                digitalWrite(PIN_MOTOR_DOWN, LOW);
+                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
                 transitionToState(STATE_HEAT_TO_SETPOINT);
                 break;
 
@@ -97,18 +105,18 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_TIMER_COMPLETE:
-                digitalWrite(PIN_SSR_1, LOW);
-                digitalWrite(PIN_SSR_2, LOW);
+                safeDigitalWrite(PIN_SSR_1, LOW);
+                safeDigitalWrite(PIN_SSR_2, LOW);
                 movement_timer_ms = millis();
                 transitionToState(STATE_MOVE_UP);
                 break;
 
             case STATE_MOVE_UP:
                 if (sysStatus.home_limit_active) {
-                    digitalWrite(PIN_MOTOR_UP, LOW);
+                    safeDigitalWrite(PIN_MOTOR_UP, LOW);
                     transitionToState(STATE_HOME_LIMIT);
                 } else {
-                    digitalWrite(PIN_MOTOR_UP, HIGH);
+                    safeDigitalWrite(PIN_MOTOR_UP, HIGH);
                     if (millis() - movement_timer_ms > 30000) {
                         triggerSafetyShutdown("UP TRAVEL TIMEOUT");
                     }
@@ -116,7 +124,7 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_HOME_LIMIT:
-                digitalWrite(PIN_MOTOR_UP, LOW);
+                safeDigitalWrite(PIN_MOTOR_UP, LOW);
                 transitionToState(STATE_SAVE_RECORD);
                 break;
 
@@ -151,10 +159,10 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_ALARM_FAULT:
-                digitalWrite(PIN_MOTOR_DOWN, LOW);
-                digitalWrite(PIN_MOTOR_UP, LOW);
-                digitalWrite(PIN_SSR_1, LOW);
-                digitalWrite(PIN_SSR_2, LOW);
+                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                safeDigitalWrite(PIN_MOTOR_UP, LOW);
+                safeDigitalWrite(PIN_SSR_1, LOW);
+                safeDigitalWrite(PIN_SSR_2, LOW);
                 break;
         }
 
@@ -204,11 +212,11 @@ void Task_TemperaturePID(void *pvParameters) {
             uint32_t pos = now % cycleWindowMs;
             uint32_t onTime1 = (uint32_t)((h1_output / 100.0) * cycleWindowMs);
             uint32_t onTime2 = (uint32_t)((h2_output / 100.0) * cycleWindowMs);
-            digitalWrite(PIN_SSR_1, (pos < onTime1) ? HIGH : LOW);
-            digitalWrite(PIN_SSR_2, (pos < onTime2) ? HIGH : LOW);
+            safeDigitalWrite(PIN_SSR_1, (pos < onTime1) ? HIGH : LOW);
+            safeDigitalWrite(PIN_SSR_2, (pos < onTime2) ? HIGH : LOW);
         } else {
-            digitalWrite(PIN_SSR_1, LOW);
-            digitalWrite(PIN_SSR_2, LOW);
+            safeDigitalWrite(PIN_SSR_1, LOW);
+            safeDigitalWrite(PIN_SSR_2, LOW);
         }
 
         static uint8_t tick_count = 0;
@@ -232,6 +240,7 @@ void Task_UIAndWeb(void *pvParameters) {
         webServer.handleClient();
 
         if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(20)) == pdTRUE) {
+            Serial.println("[TFT] Updating display...");
             updateTFTDisplay();
             xSemaphoreGive(xSemaphoreSPI);
         }
