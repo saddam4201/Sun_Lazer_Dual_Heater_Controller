@@ -40,6 +40,10 @@ static bool service_motor_down = false; // direction
 static char rtcConfirmMsg[64] = "";
 static uint32_t rtcConfirmUntil = 0; // millis until which to show the popup
 
+// Limit switch warning popup
+static char limitSwitchWarningMsg[64] = "";
+static uint32_t limitSwitchWarningUntil = 0; // millis until which to show the popup
+
 // RTC set blink/feedback (uses DEBUG_TP pin as LED/beeper output)
 static const uint16_t rtcBlinkSuccessPattern[] = {100, 100, 100, 100}; // HIGH,LOW,HIGH,LOW (ms)
 static const uint8_t  rtcBlinkSuccessLen = sizeof(rtcBlinkSuccessPattern)/sizeof(rtcBlinkSuccessPattern[0]);
@@ -63,6 +67,11 @@ static void startRtcBlink(bool success) {
     rtcBlinkNextToggle = millis() + rtcBlinkPattern[0];
 }
 
+void showLimitSwitchWarning(const char* message) {
+    snprintf(limitSwitchWarningMsg, sizeof(limitSwitchWarningMsg), "%s", message);
+    limitSwitchWarningUntil = millis() + 5000; // show popup for 5 seconds
+}
+
 void initDisplayAndWeb() {
     tft.init();
     tft.setRotation(1); // 320x240 Landscape
@@ -82,6 +91,127 @@ void handleButtonInputs() {
     static uint32_t lastButtonPress = 0;
     if (millis() - lastButtonPress < 150) return; // Non-blocking debounce
 
+#if INPUT_USE_SERIAL
+    // Serial-mode: support two interaction styles:
+    //  1) Single-key buttons '1'..'5' map to UP/DOWN/LEFT/RIGHT/OK
+    //  2) Command lines starting with ':' allow advanced simulation (when INPUT_SERIAL_SIMULATOR=1)
+    //     commands are entered as a line terminated by Enter, e.g. ':h1 120.5' or ':down on'
+    bool btnUp = false, btnDown = false, btnLeft = false, btnRight = false, btnOk = false;
+
+    static char cmdBuf[128];
+    static size_t cmdLen = 0;
+    static bool cmdMode = false; // true when a ':' command is active
+
+    while (Serial && Serial.available()) {
+        char c = Serial.read();
+        // ignore bare CR/LF outside command termination
+        if (c == '\r') continue;
+
+        // Start command mode when user types ':'
+        if (c == ':' && !cmdMode) {
+            cmdMode = true;
+            cmdLen = 0;
+            // echo prompt
+            Serial.println("[INPUT] Serial-sim command mode - enter command and press Enter");
+            continue;
+        }
+
+        if (cmdMode) {
+            // accumulate until newline
+            if (c == '\n') {
+                cmdBuf[cmdLen] = '\0';
+#if INPUT_SERIAL_SIMULATOR
+                // process command
+                Serial.printf("[INPUT] Command: %s\n", cmdBuf);
+                // parse tokens
+                char *tok = strtok(cmdBuf, " \t");
+                if (tok != NULL) {
+                    // helper to get next token
+                    char *arg = strtok(NULL, " \t");
+                    if (strcmp(tok, "down") == 0 && arg != NULL) {
+                        if (strcmp(arg, "on") == 0) sysStatus.down_limit_active = true;
+                        else if (strcmp(arg, "off") == 0) sysStatus.down_limit_active = false;
+                        Serial.printf("[INPUT] Down limit set to: %s\n", sysStatus.down_limit_active ? "ON" : "OFF");
+                    } else if (strcmp(tok, "home") == 0 && arg != NULL) {
+                        if (strcmp(arg, "on") == 0) sysStatus.home_limit_active = true;
+                        else if (strcmp(arg, "off") == 0) sysStatus.home_limit_active = false;
+                        Serial.printf("[INPUT] Home limit set to: %s\n", sysStatus.home_limit_active ? "ON" : "OFF");
+                    } else if ((strcmp(tok, "h1") == 0 || strcmp(tok, "H1") == 0) && arg != NULL) {
+                        float v = atof(arg);
+                        sysStatus.h1_actual_c = v;
+                        Serial.printf("[INPUT] H1 actual temp set to %.2f C\n", v);
+                    } else if ((strcmp(tok, "h2") == 0 || strcmp(tok, "H2") == 0) && arg != NULL) {
+                        float v = atof(arg);
+                        sysStatus.h2_actual_c = v;
+                        Serial.printf("[INPUT] H2 actual temp set to %.2f C\n", v);
+                    } else if (strcmp(tok, "torque") == 0 && arg != NULL) {
+                        float v = atof(arg);
+                        sysStatus.current_torque_nm = v;
+                        Serial.printf("[INPUT] Torque set to %.3f Nm\n", v);
+                    } else if (strcmp(tok, "ssr1") == 0 && arg != NULL) {
+                        if (strcmp(arg, "on") == 0) safeDigitalWrite(PIN_SSR_1, HIGH);
+                        else if (strcmp(arg, "off") == 0) safeDigitalWrite(PIN_SSR_1, LOW);
+                        Serial.printf("[INPUT] SSR1 -> %s\n", digitalRead(PIN_SSR_1) ? "ON" : "OFF");
+                    } else if (strcmp(tok, "ssr2") == 0 && arg != NULL) {
+                        if (strcmp(arg, "on") == 0) safeDigitalWrite(PIN_SSR_2, HIGH);
+                        else if (strcmp(arg, "off") == 0) safeDigitalWrite(PIN_SSR_2, LOW);
+                        Serial.printf("[INPUT] SSR2 -> %s\n", digitalRead(PIN_SSR_2) ? "ON" : "OFF");
+                    } else if (strcmp(tok, "motor_down") == 0 && arg != NULL) {
+                        if (strcmp(arg, "on") == 0) safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
+                        else if (strcmp(arg, "off") == 0) safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                        Serial.printf("[INPUT] Motor down -> %s\n", digitalRead(PIN_MOTOR_DOWN) ? "ON" : "OFF");
+                    } else if (strcmp(tok, "motor_up") == 0 && arg != NULL) {
+                        if (strcmp(arg, "on") == 0) safeDigitalWrite(PIN_MOTOR_UP, HIGH);
+                        else if (strcmp(arg, "off") == 0) safeDigitalWrite(PIN_MOTOR_UP, LOW);
+                        Serial.printf("[INPUT] Motor up -> %s\n", digitalRead(PIN_MOTOR_UP) ? "ON" : "OFF");
+                    } else if (strcmp(tok, "show") == 0) {
+                        Serial.printf("[INPUT] Status: state=%s, H1=%.2f, H2=%.2f, torque=%.3f, down=%s, home=%s\n",
+                                      stateNames[sysStatus.currentState], sysStatus.h1_actual_c, sysStatus.h2_actual_c, sysStatus.current_torque_nm,
+                                      sysStatus.down_limit_active?"ON":"OFF", sysStatus.home_limit_active?"ON":"OFF");
+                        Serial.printf("[INPUT] DN Failures: %u, HOME Failures: %u\n", (unsigned)sysStatus.down_limit_fail_count, (unsigned)sysStatus.home_limit_fail_count);
+                    } else if (strcmp(tok, "reset_fail") == 0) {
+                        sysStatus.down_limit_fail_count = 0;
+                        sysStatus.home_limit_fail_count = 0;
+                        sysStatus.last_down_limit_fail_ms = 0;
+                        sysStatus.last_home_limit_fail_ms = 0;
+                        Serial.println("[INPUT] Limit switch failure counters reset.");
+                    } else {
+                        Serial.printf("[INPUT] Unknown command: %s\n", tok);
+                    }
+                }
+#else
+                Serial.println("[INPUT] Serial-simulator disabled at compile time");
+#endif
+                // reset command mode
+                cmdMode = false;
+                cmdLen = 0;
+            } else {
+                // accumulate command character
+                if (cmdLen < sizeof(cmdBuf) - 1) cmdBuf[cmdLen++] = c;
+            }
+            // continue consuming available characters
+            continue;
+        }
+
+        // Not in command mode: treat single-char as immediate key (existing behavior)
+        if (c == '\n') continue;
+        Serial.printf("[INPUT] Key received: %c\n", c);
+        switch (c) {
+            case '1': btnUp = true; break;
+            case '2': btnDown = true; break;
+            case '3': btnLeft = true; break;
+            case '4': btnRight = true; break;
+            case '5': btnOk = true; break;
+            default:
+                // ignore other keys
+                break;
+        }
+    }
+
+    // if no interactive keypresses and not in command-mode, return
+    if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk && !cmdMode) return;
+    lastButtonPress = millis();
+#else
     bool btnUp    = (digitalRead(PIN_BTN_UP) == LOW);
     bool btnDown  = (digitalRead(PIN_BTN_DOWN) == LOW);
     bool btnLeft  = (digitalRead(PIN_BTN_LEFT) == LOW);
@@ -90,6 +220,36 @@ void handleButtonInputs() {
 
     if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk) return;
     lastButtonPress = millis();
+#endif
+
+    // If a force-start confirmation is pending and we're on Home screen, handle confirmation inputs
+    if (sysStatus.forceStartPending && currentScreen == SCREEN_HOME) {
+        // If OK pressed while pending -> force start
+        if (btnOk) {
+            sysStatus.forceStartPending = false;
+            sysStatus.forceStartUntilMs = 0;
+            transitionToState(STATE_SAFETY_CHECK);
+#if ENABLE_SERIAL_TFT
+            vd_popup("Force-start confirmed. Starting process...");
+#else
+            Serial.println("[START] Force-start confirmed. Starting process...");
+#endif
+            return;
+        }
+        // If Left pressed while pending -> cancel
+        if (btnLeft) {
+            sysStatus.forceStartPending = false;
+            sysStatus.forceStartUntilMs = 0;
+#if ENABLE_SERIAL_TFT
+            vd_popup("Force-start canceled.");
+#else
+            Serial.println("[START] Force-start canceled.");
+#endif
+            return;
+        }
+        // ignore other buttons while confirmation active
+        return;
+    }
 
     switch (currentScreen) {
         case SCREEN_HOME:
@@ -99,7 +259,28 @@ void handleButtonInputs() {
                 currentScreen = SCREEN_SERVICE;
             } else if (btnOk) {
                 if (sysStatus.currentState == STATE_IDLE) {
-                    transitionToState(STATE_SAFETY_CHECK);
+                    // Check start mode: auto prevents starting until setpoints are reached
+                    bool allowStart = true;
+                    if (sysStatus.start_mode_auto) {
+                        ProgramRecipe_t &prec = recipes[sysStatus.active_program_idx];
+                        if (!(fabs(sysStatus.h1_actual_c - prec.h1_setpoint_c) <= prec.temp_tolerance_c &&
+                              fabs(sysStatus.h2_actual_c - prec.h2_setpoint_c) <= prec.temp_tolerance_c)) {
+                            allowStart = false;
+                        }
+                    }
+
+                        if (allowStart) {
+                        transitionToState(STATE_SAFETY_CHECK);
+                    } else {
+                            // Start blocked by Auto mode: offer force-start confirmation
+                            sysStatus.forceStartPending = true;
+                            sysStatus.forceStartUntilMs = millis() + 8000; // 8s window to confirm
+#if ENABLE_SERIAL_TFT
+                            vd_popup("Setpoint not reached. Press OK to Force Start or LEFT to Cancel (8s)");
+#else
+                            Serial.println("[START] Setpoint not reached. Press OK to Force Start or LEFT to Cancel (8s)");
+#endif
+                        }
                 } else if (sysStatus.currentState == STATE_ALARM_FAULT) {
                     transitionToState(STATE_IDLE);
                 }
@@ -270,6 +451,26 @@ void handleButtonInputs() {
                 Serial.println("[NVS] All recipes saved to NVS.");
 #endif
                 // remain on service screen
+            } else if (btnDown && !btnOk) {
+                // Toggle start mode: Auto (block start until setpoint) vs Manual (allow start anytime)
+                sysStatus.start_mode_auto = !sysStatus.start_mode_auto;
+                saveStartModeToNVS(sysStatus.start_mode_auto);
+#if ENABLE_SERIAL_TFT
+                vd_popup(sysStatus.start_mode_auto ? "Start Mode: AUTO" : "Start Mode: MANUAL");
+#else
+                Serial.printf("[NVS] Start Mode set to: %s\n", sysStatus.start_mode_auto ? "AUTO" : "MANUAL");
+#endif
+            } else if (btnDown && btnRight) {
+                // Reset limit switch failure counters
+                sysStatus.down_limit_fail_count = 0;
+                sysStatus.home_limit_fail_count = 0;
+                sysStatus.last_down_limit_fail_ms = 0;
+                sysStatus.last_home_limit_fail_ms = 0;
+#if ENABLE_SERIAL_TFT
+                vd_popup("Limit switch failure counters reset.");
+#else
+                Serial.println("[SERVICE] Limit switch failure counters reset.");
+#endif
             } else if (btnLeft) {
                 // cancel any active service tests
                 service_heater_test_active = false;
@@ -337,32 +538,90 @@ void drawHomeScreen() {
     tft.drawString("Active PGM:", 10, 35, 2);
     tft.drawString(recipes[sysStatus.active_program_idx].name, 120, 35, 2);
 
+#if ENABLE_H1
     tft.drawString("H1 Set/Act:", 10, 65, 2);
     tft.drawFloat(recipes[sysStatus.active_program_idx].h1_setpoint_c, 1, 120, 65, 2);
     tft.drawString("/", 175, 65, 2);
     tft.drawFloat(sysStatus.h1_actual_c, 1, 190, 65, 2);
+#else
+    tft.drawString("H1: DISABLED", 10, 65, 2);
+#endif
 
+#if ENABLE_H2
     tft.drawString("H2 Set/Act:", 10, 95, 2);
     tft.drawFloat(recipes[sysStatus.active_program_idx].h2_setpoint_c, 1, 120, 95, 2);
     tft.drawString("/", 175, 95, 2);
     tft.drawFloat(sysStatus.h2_actual_c, 1, 190, 95, 2);
+#else
+    tft.drawString("H2: DISABLED", 10, 95, 2);
+#endif
 
     tft.drawString("Torque (Nm):", 10, 125, 2);
     tft.drawFloat(sysStatus.current_torque_nm, 1, 120, 125, 2);
 
-    tft.drawString("Timer (Sec):", 10, 155, 2);
-    tft.drawNumber(sysStatus.remaining_time_sec, 120, 155, 2);
+    // Status line: give a human readable process status
+    const char *statusLine = "IDLE";
+    switch (sysStatus.currentState) {
+        case STATE_IDLE: statusLine = "Idle - Awaiting Start (press OK)"; break;
+        case STATE_SAFETY_CHECK: statusLine = "Running safety checks"; break;
+        case STATE_MOVE_DOWN: statusLine = "Moving down to start position"; break;
+        case STATE_DOWN_LIMIT: statusLine = "At down limit - preparing to heat"; break;
+        case STATE_HEAT_TO_SETPOINT: statusLine = "Heating - waiting to reach setpoints"; break;
+        case STATE_TEMPERATURE_READY: statusLine = "Temperature reached - starting timer"; break;
+        case STATE_PROCESS_TIMER: statusLine = "Process running"; break;
+        case STATE_TIMER_COMPLETE: statusLine = "Timer complete - moving up"; break;
+        case STATE_MOVE_UP: statusLine = "Moving up to home"; break;
+        case STATE_HOME_LIMIT: statusLine = "At home - saving record"; break;
+        case STATE_SAVE_RECORD: statusLine = "Saving record"; break;
+        case STATE_PROCESS_COMPLETE: statusLine = "Process complete"; break;
+        case STATE_READY: statusLine = "Ready"; break;
+        case STATE_ALARM_FAULT: statusLine = "ALARM - see message"; break;
+        default: statusLine = "Unknown"; break;
+    }
 
-    tft.drawString("[OK]: Start | [->]: Program Menu", 10, 185, 2);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.drawString("Status:", 10, 155, 2);
+
+    // If boot health failed, show the boot error prominently
+    if (!sysStatus.boot_ok) {
+        char buf[64];
+        strncpy(buf, sysStatus.boot_msg, sizeof(buf)-1);
+        buf[sizeof(buf)-1] = '\0';
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.drawString("BOOT ERROR:", 80, 155, 2);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(buf, 10, 175, 2);
+    } else {
+        // Normal status
+        // If idle and boot ok, show explicit Ready message
+        if (sysStatus.currentState == STATE_IDLE) {
+            tft.drawString("Ready to start (press OK)", 80, 155, 2);
+        } else {
+            tft.drawString(statusLine, 80, 155, 2);
+        }
+    }
+
+    // Timer display (format mm:ss) updated while PROCESS_TIMER
+    if (sysStatus.remaining_time_sec > 0) {
+        uint32_t t = sysStatus.remaining_time_sec;
+        uint32_t mm = t / 60;
+        uint32_t ss = t % 60;
+        char tb[16];
+        snprintf(tb, sizeof(tb), "%02u:%02u", (unsigned)mm, (unsigned)ss);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("Timer:", 10, 185, 2);
+        tft.drawString(tb, 80, 185, 4);
+    } else {
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString("Timer:", 10, 185, 2);
+        tft.drawString("--:--", 80, 185, 4);
+    }
+
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    tft.drawString("[OK]: Start | [->]: Program Menu", 10, 210, 2);
 
     uint16_t bannerColor = (sysStatus.currentState == STATE_ALARM_FAULT) ? TFT_RED : TFT_DARKGREEN;
-    tft.fillRect(0, 210, 320, 30, bannerColor);
-    tft.setTextColor(TFT_WHITE, bannerColor);
-    if (sysStatus.currentState == STATE_ALARM_FAULT) {
-        tft.drawString(sysStatus.alarm_msg, 10, 215, 2);
-    } else {
-        tft.drawString(stateNames[sysStatus.currentState], 10, 215, 2);
-    }
+    tft.fillRect(0, 235, 320, 5, bannerColor);
 }
 
 void drawProgramSelectScreen() {
@@ -427,33 +686,45 @@ void drawServiceScreen() {
     tft.drawString("SERVICE DIAGNOSTICS", 10, 5, 2);
 
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("DN Limit Switch: ", 10, 45, 2);
-    tft.drawString(sysStatus.down_limit_active ? "ACTIVE" : "OPEN", 180, 45, 2);
+    tft.drawString("DN Limit: ", 10, 35, 2);
+    tft.drawString(sysStatus.down_limit_active ? "ACTIVE" : "OPEN", 100, 35, 2);
 
-    tft.drawString("HOME Limit Switch: ", 10, 80, 2);
-    tft.drawString(sysStatus.home_limit_active ? "ACTIVE" : "OPEN", 180, 80, 2);
+    tft.drawString("HOME Limit: ", 10, 55, 2);
+    tft.drawString(sysStatus.home_limit_active ? "ACTIVE" : "OPEN", 100, 55, 2);
 
-    tft.drawString("Raw Torque (Nm): ", 10, 115, 2);
-    tft.drawFloat(sysStatus.current_torque_nm, 2, 180, 115, 2);
+    // Show limit switch failure counts with warning color if failures exist
+    tft.setTextColor(sysStatus.down_limit_fail_count > 0 ? TFT_RED : TFT_WHITE, TFT_BLACK);
+    char dnFailMsg[32];
+    snprintf(dnFailMsg, sizeof(dnFailMsg), "DN Fail: %u", (unsigned)sysStatus.down_limit_fail_count);
+    tft.drawString(dnFailMsg, 200, 35, 2);
 
-    tft.drawString("Max Torque (Nm): ", 10, 145, 2);
-    tft.drawFloat(sysStatus.max_torque_nm, 2, 180, 145, 2);
+    tft.setTextColor(sysStatus.home_limit_fail_count > 0 ? TFT_RED : TFT_WHITE, TFT_BLACK);
+    char homeFailMsg[32];
+    snprintf(homeFailMsg, sizeof(homeFailMsg), "HM Fail: %u", (unsigned)sysStatus.home_limit_fail_count);
+    tft.drawString(homeFailMsg, 200, 55, 2);
+
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("Torque (Nm): ", 10, 80, 2);
+    tft.drawFloat(sysStatus.current_torque_nm, 2, 100, 80, 2);
+    tft.drawString("Max: ", 150, 80, 2);
+    tft.drawFloat(sysStatus.max_torque_nm, 2, 190, 80, 2);
 
     // Show service test statuses
     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    if (service_heater_test_active) tft.drawString("Heater Test: RUNNING", 10, 175, 2);
-    else tft.drawString("[OK]: Heater Test", 10, 175, 2);
+    if (service_heater_test_active) tft.drawString("Heater Test: RUNNING", 10, 105, 2);
+    else tft.drawString("[OK]: Heater Test", 10, 105, 2);
 
     if (service_motor_test_active) {
-        tft.drawString(service_motor_down ? "Motor Jog: DOWN" : "Motor Jog: UP", 180, 175, 2);
+        tft.drawString(service_motor_down ? "Motor Jog: DOWN" : "Motor Jog: UP", 150, 105, 2);
     } else {
-        tft.drawString("[UP]/[->]: Motor Jog", 180, 175, 2);
+        tft.drawString("[UP]/[->]: Motor Jog", 150, 105, 2);
     }
 
     tft.setTextColor(TFT_CYAN, TFT_BLACK);
-    tft.drawString("[<-]: Back | [OK]: Heater Test | [->]: Motor Down | [UP]: Motor Up | [->]+[OK]: PID Tune", 10, 200, 2);
-    tft.drawString("[DN]+[OK]: Set RTC", 10, 220, 2);
-    tft.drawString("[OK]+[<-]: Save Defaults to NVS", 10, 235, 2);
+    tft.drawString("[<-]: Back | [OK]: Heater Test | [UP]/[->]: Motor Jog", 10, 140, 2);
+    tft.drawString("[->]+[OK]: PID Tune | [DN]+[OK]: Set RTC", 10, 160, 2);
+    tft.drawString("[DN]: Toggle Start Mode | [DN]+[->]: Reset Fail Counters", 10, 180, 2);
+    tft.drawString("[OK]+[<-]: Save Defaults", 10, 200, 2);
 }
 
 void updateTFTDisplay() {
@@ -605,6 +876,41 @@ void updateTFTDisplay() {
         tft.drawString(rtcConfirmMsg, x + 8, y + 10, 2);
     } else {
         rtcConfirmUntil = 0;
+    }
+
+    // draw limit switch warning popup if any
+    if (limitSwitchWarningUntil && millis() < limitSwitchWarningUntil) {
+        int w = 280; int h = 50;
+        int x = (320 - w) / 2; int y = (240 - h) / 2;
+        tft.fillRect(x - 4, y - 4, w + 8, h + 8, TFT_RED);
+        tft.fillRect(x - 2, y - 2, w + 4, h + 4, TFT_BLACK);
+        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+        tft.drawString("WARNING!", x + 8, y + 5, 2);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(limitSwitchWarningMsg, x + 8, y + 25, 2);
+    } else {
+        limitSwitchWarningUntil = 0;
+    }
+
+    // draw force-start confirmation overlay if pending
+    if (sysStatus.forceStartPending) {
+        if ((int32_t)(sysStatus.forceStartUntilMs - millis()) <= 0) {
+            // timeout, clear pending
+            sysStatus.forceStartPending = false;
+            sysStatus.forceStartUntilMs = 0;
+        } else {
+            int w = 300; int h = 60;
+            int x = (320 - w) / 2; int y = (240 - h) / 2;
+            tft.fillRect(x - 4, y - 4, w + 8, h + 8, TFT_WHITE);
+            tft.fillRect(x - 2, y - 2, w + 4, h + 4, TFT_BLACK);
+            tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+            tft.drawString("Confirm Force Start?", x + 8, y + 8, 2);
+            tft.setTextColor(TFT_WHITE, TFT_BLACK);
+            uint32_t remaining = (sysStatus.forceStartUntilMs > millis()) ? (sysStatus.forceStartUntilMs - millis())/1000 : 0;
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Press OK to Force Start, LEFT to Cancel (%us)", (unsigned)remaining);
+            tft.drawString(msg, x + 8, y + 28, 2);
+        }
     }
 
     // process RTC blink pattern (non-blocking)

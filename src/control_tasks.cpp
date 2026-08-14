@@ -37,9 +37,27 @@ void Task_SafetyAndControl(void *pvParameters) {
     for (;;) {
         DEBUG_TP_HIGH();
 
+#if INPUT_SERIAL_SIMULATOR
+        // In serial simulator mode, limit switch states are supplied via terminal commands
+        // and should not be read from hardware pins.
+        // sysStatus.down_limit_active and sysStatus.home_limit_active are controlled by simulator commands.
+        (void)PIN_DOWN_LIMIT; (void)PIN_HOME_LIMIT;
+#else
         sysStatus.down_limit_active = (digitalRead(PIN_DOWN_LIMIT) == LOW);
         sysStatus.home_limit_active = (digitalRead(PIN_HOME_LIMIT) == LOW);
+#endif
 
+#if ENABLE_HX711
+  #if INPUT_SERIAL_SIMULATOR
+        // Use simulated torque value set by terminal commands (sysStatus.current_torque_nm)
+        float raw_torque = fabsf(sysStatus.current_torque_nm);
+        sysStatus.current_torque_nm = raw_torque;
+        if (raw_torque > sysStatus.max_torque_nm) sysStatus.max_torque_nm = raw_torque;
+        if (raw_torque > recipes[sysStatus.active_program_idx].torque_limit_nm &&
+            (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_ALARM_FAULT)) {
+            triggerSafetyShutdown("TORQUE OVERLOAD TRIP");
+        }
+  #else
         if (torqueScale.is_ready()) {
             float raw_torque = fabsf(torqueScale.get_units(1));
             sysStatus.current_torque_nm = raw_torque;
@@ -51,11 +69,21 @@ void Task_SafetyAndControl(void *pvParameters) {
                 triggerSafetyShutdown("TORQUE OVERLOAD TRIP");
             }
         }
+  #endif
+#else
+        // HX711 disabled: simulate torque sensor with zeros so process can proceed
+        sysStatus.current_torque_nm = 0.0f;
+#endif
 
         switch (sysStatus.currentState) {
             case STATE_IDLE:
+#if INPUT_SERIAL_SIMULATOR
+                // In simulator mode, motor outputs are controlled by terminal commands only
+                (void)PIN_MOTOR_DOWN; (void)PIN_MOTOR_UP;
+#else
                 safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
                 safeDigitalWrite(PIN_MOTOR_UP, LOW);
+#endif
                 break;
 
             case STATE_SAFETY_CHECK:
@@ -71,18 +99,46 @@ void Task_SafetyAndControl(void *pvParameters) {
 
             case STATE_MOVE_DOWN:
                 if (sysStatus.down_limit_active) {
+#if INPUT_SERIAL_SIMULATOR
+                // Do not control motor pin in simulator mode
+                (void)PIN_MOTOR_DOWN;
+#else
+                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+#endif
+                transitionToState(STATE_DOWN_LIMIT);
+            } else {
+#if INPUT_SERIAL_SIMULATOR
+                // In simulator mode, terminal should drive motor state; just check timeout
+                (void)PIN_MOTOR_DOWN;
+#else
+                safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
+#endif
+                if (millis() - movement_timer_ms > (LIMIT_SWITCH_DOWN_TIMEOUT_SEC * 1000UL)) {
+                    // Timeout reached: stop motor and proceed to next stage to avoid blocking the process.
+                    // Track failure and provide warning
+                    sysStatus.down_limit_fail_count++;
+                    sysStatus.last_down_limit_fail_ms = millis();
+                    
+                    char warningMsg[64];
+                    snprintf(warningMsg, sizeof(warningMsg), "Down limit timeout! Failures: %u", (unsigned)sysStatus.down_limit_fail_count);
+                    showLimitSwitchWarning(warningMsg);
+                    
+                    Serial.printf("[WARNING] Down limit switch not detected within %u s. Failure count: %u\n", 
+                                 (unsigned)LIMIT_SWITCH_DOWN_TIMEOUT_SEC, (unsigned)sysStatus.down_limit_fail_count);
+#if !INPUT_SERIAL_SIMULATOR
                     safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+#endif
                     transitionToState(STATE_DOWN_LIMIT);
-                } else {
-                        safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
-                    if (millis() - movement_timer_ms > 30000) {
-                        triggerSafetyShutdown("DOWN TRAVEL TIMEOUT");
-                    }
                 }
-                break;
+            }
+            break;
 
             case STATE_DOWN_LIMIT:
+#if INPUT_SERIAL_SIMULATOR
+                (void)PIN_MOTOR_DOWN;
+#else
                 safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+#endif
                 transitionToState(STATE_HEAT_TO_SETPOINT);
                 break;
 
@@ -105,26 +161,57 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_TIMER_COMPLETE:
+#if INPUT_SERIAL_SIMULATOR
+                // Let terminal control SSRs in simulator mode
+                (void)PIN_SSR_1; (void)PIN_SSR_2;
+#else
                 safeDigitalWrite(PIN_SSR_1, LOW);
                 safeDigitalWrite(PIN_SSR_2, LOW);
+#endif
                 movement_timer_ms = millis();
                 transitionToState(STATE_MOVE_UP);
                 break;
 
             case STATE_MOVE_UP:
                 if (sysStatus.home_limit_active) {
+#if INPUT_SERIAL_SIMULATOR
+                    (void)PIN_MOTOR_UP;
+#else
                     safeDigitalWrite(PIN_MOTOR_UP, LOW);
+#endif
                     transitionToState(STATE_HOME_LIMIT);
                 } else {
+#if INPUT_SERIAL_SIMULATOR
+                    (void)PIN_MOTOR_UP;
+#else
                     safeDigitalWrite(PIN_MOTOR_UP, HIGH);
-                    if (millis() - movement_timer_ms > 30000) {
-                        triggerSafetyShutdown("UP TRAVEL TIMEOUT");
+#endif
+                    if (millis() - movement_timer_ms > (LIMIT_SWITCH_HOME_TIMEOUT_SEC * 1000UL)) {
+                        // Timeout reached: stop motor and proceed to next stage
+                        // Track failure and provide warning
+                        sysStatus.home_limit_fail_count++;
+                        sysStatus.last_home_limit_fail_ms = millis();
+                        
+                        char warningMsg[64];
+                        snprintf(warningMsg, sizeof(warningMsg), "Home limit timeout! Failures: %u", (unsigned)sysStatus.home_limit_fail_count);
+                        showLimitSwitchWarning(warningMsg);
+                        
+                        Serial.printf("[WARNING] Home limit switch not detected within %u s. Failure count: %u\n", 
+                                     (unsigned)LIMIT_SWITCH_HOME_TIMEOUT_SEC, (unsigned)sysStatus.home_limit_fail_count);
+#if !INPUT_SERIAL_SIMULATOR
+                        safeDigitalWrite(PIN_MOTOR_UP, LOW);
+#endif
+                        transitionToState(STATE_HOME_LIMIT);
                     }
                 }
                 break;
 
             case STATE_HOME_LIMIT:
+#if INPUT_SERIAL_SIMULATOR
+                (void)PIN_MOTOR_UP;
+#else
                 safeDigitalWrite(PIN_MOTOR_UP, LOW);
+#endif
                 transitionToState(STATE_SAVE_RECORD);
                 break;
 
@@ -159,10 +246,14 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_ALARM_FAULT:
+#if INPUT_SERIAL_SIMULATOR
+                (void)PIN_MOTOR_DOWN; (void)PIN_MOTOR_UP; (void)PIN_SSR_1; (void)PIN_SSR_2;
+#else
                 safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
                 safeDigitalWrite(PIN_MOTOR_UP, LOW);
                 safeDigitalWrite(PIN_SSR_1, LOW);
                 safeDigitalWrite(PIN_SSR_2, LOW);
+#endif
                 break;
         }
 
@@ -182,11 +273,23 @@ void Task_TemperaturePID(void *pvParameters) {
     h2_pid.SetOutputLimits(0, 100);
 
     for (;;) {
+#if ENABLE_MAX31865
+  #if INPUT_SERIAL_SIMULATOR
+        // Do not touch real sensors in simulator mode — use values provided by serial commands
+        (void)xSemaphoreSPI;
+        // sysStatus.h1_actual_c and h2_actual_c are driven by the simulator commands or defaults
+  #else
         if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(20)) == pdTRUE) {
             sysStatus.h1_actual_c = max1.temperature(RNOMINAL, RREF);
             sysStatus.h2_actual_c = max2.temperature(RNOMINAL, RREF);
             xSemaphoreGive(xSemaphoreSPI);
         }
+  #endif
+#else
+        // MAX31865 disabled: emulate readings as the configured setpoints so process can proceed in test mode
+        sysStatus.h1_actual_c = recipes[sysStatus.active_program_idx].h1_setpoint_c;
+        sysStatus.h2_actual_c = recipes[sysStatus.active_program_idx].h2_setpoint_c;
+#endif
 
         // Update PID inputs and setpoints
         h1_input = sysStatus.h1_actual_c;
@@ -203,20 +306,45 @@ void Task_TemperaturePID(void *pvParameters) {
                           recipes[sysStatus.active_program_idx].h2_Kd);
 
         if (sysStatus.currentState == STATE_HEAT_TO_SETPOINT || sysStatus.currentState == STATE_PROCESS_TIMER) {
-            // Compute PID
+            // Compute PID conditionally per-heater
+#if ENABLE_H1
             h1_pid.Compute();
+#else
+            h1_output = 0.0;
+#endif
+#if ENABLE_H2
             h2_pid.Compute();
+#else
+            h2_output = 0.0;
+#endif
 
-            // Time-proportioning control for SSRs
+            // Time-proportioning control for SSRs (only if heater enabled)
             uint32_t now = millis();
             uint32_t pos = now % cycleWindowMs;
+#if ENABLE_H1
             uint32_t onTime1 = (uint32_t)((h1_output / 100.0) * cycleWindowMs);
+#else
+            uint32_t onTime1 = 0;
+#endif
+#if ENABLE_H2
             uint32_t onTime2 = (uint32_t)((h2_output / 100.0) * cycleWindowMs);
+#else
+            uint32_t onTime2 = 0;
+#endif
+#if INPUT_SERIAL_SIMULATOR
+            // In simulator mode, SSR outputs are controlled from terminal commands only
+            (void)pos; (void)onTime1; (void)onTime2;
+#else
             safeDigitalWrite(PIN_SSR_1, (pos < onTime1) ? HIGH : LOW);
             safeDigitalWrite(PIN_SSR_2, (pos < onTime2) ? HIGH : LOW);
+#endif
         } else {
+#if INPUT_SERIAL_SIMULATOR
+            (void)PIN_SSR_1; (void)PIN_SSR_2;
+#else
             safeDigitalWrite(PIN_SSR_1, LOW);
             safeDigitalWrite(PIN_SSR_2, LOW);
+#endif
         }
 
         static uint8_t tick_count = 0;
@@ -240,7 +368,7 @@ void Task_UIAndWeb(void *pvParameters) {
         webServer.handleClient();
 
         if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(20)) == pdTRUE) {
-            Serial.println("[TFT] Updating display...");
+           // Serial.println("[TFT] Updating display...");
             updateTFTDisplay();
             xSemaphoreGive(xSemaphoreSPI);
         }

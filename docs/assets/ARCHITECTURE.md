@@ -10,6 +10,10 @@ Overview (logical modules)
 - Control & Safety (src/control_tasks.cpp)
   - Process state machine
   - Motor control (move down/up), limit-switch handling
+  - **Separate limit switch timeout system:**
+    - Individual timeouts for down limit (`LIMIT_SWITCH_DOWN_TIMEOUT_SEC`) and home limit (`LIMIT_SWITCH_HOME_TIMEOUT_SEC`)
+    - Failure tracking with counts and timestamps for each limit switch
+    - TFT warning popups on timeout with red border and failure count display
   - Torque monitoring via HX711 and safety trip
   - CSV record creation and queueing
 
@@ -108,6 +112,10 @@ ASCII Architecture Diagram
 Data flows (short)
 - Temperature readings -> PID -> SSR -> heaters
 - Torque readings -> Safety checks -> possible safety trip -> system alarm
+- **Limit switch monitoring:**
+  - Limit switch state -> timeout check -> failure counter increment -> TFT warning popup
+  - Failure counts -> Service screen display (highlighted when > 0)
+  - Reset command -> failure counters cleared
 - End-of-run -> SafetyTask enqueues CSV -> Logger writes SD and updates recent-in-RAM
 - UI edits (recipe or PID) -> saveRecipeToNVS() -> NVS updated
 - RTC set via TFT or Web -> rtc.setRTCTime() -> RTC updated -> timestamp used for logs

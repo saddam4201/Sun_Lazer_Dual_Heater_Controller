@@ -12,6 +12,11 @@ High-level runtime components
   - Task_SafetyAndControl (real-time, core 1)
     - Main state machine (ProcessState_t) which drives movement, safety checks, timers, and saves CSV records at run end.
     - Reads torque sensor and enforces torque limits -> calls triggerSafetyShutdown on trip.
+    - **Limit switch timeout monitoring:**
+      - Separate timeout tracking for down limit (`LIMIT_SWITCH_DOWN_TIMEOUT_SEC`) and home limit (`LIMIT_SWITCH_HOME_TIMEOUT_SEC`)
+      - Failure counter increment and timestamp tracking when timeout occurs
+      - TFT warning popup trigger via `showLimitSwitchWarning()` function
+      - Motor stops on timeout, process continues to next state (non-blocking)
     - Produces CSV record and queues it to xLogQueue when saving records.
   - Task_TemperaturePID (real-time, core 1)
     - Periodically reads MAX31865 thermocouples under xSemaphoreSPI.
@@ -29,7 +34,7 @@ High-level runtime components
 
 Key data structures (include/config.h)
 - ProgramRecipe_t (10 entries): per-program fields include setpoints, process_time_sec, torque_limit_nm, temp_tolerance_c, and per-program PID tunings (h1_Kp, h1_Ki, h1_Kd, h2_*) plus magic/version for NVS migration.
-- SystemStatus_t: runtime state, actual temps, current and max torque, remaining time, limit switch flags, active_program_idx, alarm_msg.
+- SystemStatus_t: runtime state, actual temps, current and max torque, remaining time, limit switch flags, active_program_idx, alarm_msg, **limit switch failure tracking** (down_limit_fail_count, home_limit_fail_count, last_down_limit_fail_ms, last_home_limit_fail_ms).
 
 Inter-task communication and synchronization
 - xSemaphoreSPI: mutex protecting SPI transactions (MAX31865 reads) and TFT drawing.
@@ -44,6 +49,7 @@ Storage & RTC
 Detailed sequence: typical run
 1. Boot
    - setup(): Serial + DEBUG_TP, pins, SPI, TFT/Web, initialize MAX31865, HX711, initStorageModules(), loadRecipesFromNVS(), initRTC() -> prints boot diagnostics to Serial.
+   - Initialize limit switch failure counters to zero.
    - Tasks created: SafetyTask, PIDTask, UITask, LogTask.
 
 2. Program selection & start
@@ -52,6 +58,12 @@ Detailed sequence: typical run
 
 3. Move down and heating
    - Safety task runs motor down until down limit -> transitions to HEAT_TO_SETPOINT.
+   - **If down limit timeout occurs:**
+     - Motor stops automatically
+     - Failure counter increments (down_limit_fail_count++)
+     - Timestamp recorded (last_down_limit_fail_ms)
+     - TFT warning popup appears via showLimitSwitchWarning()
+     - Process continues to STATE_DOWN_LIMIT (non-blocking behavior)
    - PID Task reads temps, computes PID, applies SSR time-proportioning to heaters.
    - When both temps within tolerance, Safety task transitions to TEMPERATURE_READY -> process timer begins.
 
@@ -61,6 +73,12 @@ Detailed sequence: typical run
 
 5. Timer complete and save
    - On completion, SafetyTask moves motor up and eventually to SAVE_RECORD.
+   - **If home limit timeout occurs:**
+     - Motor stops automatically
+     - Failure counter increments (home_limit_fail_count++)
+     - Timestamp recorded (last_home_limit_fail_ms)
+     - TFT warning popup appears via showLimitSwitchWarning()
+     - Process continues to STATE_HOME_LIMIT (non-blocking behavior)
    - SafetyTask composes CSV: timestamp (from getTimestampForLog()), program, set/act temps, process_time_sec, max_torque_nm, result, alarm_code and xQueueSend()s it to xLogQueue.
 
 6. Logging
@@ -68,6 +86,11 @@ Detailed sequence: typical run
 
 UI and web interactions
 - TFT screens are updated every UI tick (50 ms loop) inside xSemaphoreSPI to avoid SPI collisions.
+- **Limit switch warning popups:**
+  - Red-bordered popup appears on TFT for 5 seconds when limit switch timeout occurs
+  - Displays "WARNING!" header and failure count
+  - Managed via `showLimitSwitchWarning()` function and transient popup system
+- Service screen displays limit switch failure counts (highlighted in red when > 0)
 - Web endpoints:
   - / -> basic status page (H1/H2 temps, torque, state)
   - /rtc -> current RTC time
@@ -81,19 +104,28 @@ Debug/test-point usage
 Where to look in code
 - Boot & task creation: src/main.cpp
 - State machine & logging enqueue: src/control_tasks.cpp
+- **Limit switch timeout monitoring:** src/control_tasks.cpp (STATE_MOVE_DOWN, STATE_MOVE_UP)
 - PID control & SSR time-proportion: src/control_tasks.cpp (PID helper include/pid_helper.h)
 - UI, TFT, web: src/display_ui.cpp, include/display_ui.h
+- **Limit switch warning popups:** src/display_ui.cpp (showLimitSwitchWarning, transient popup system)
 - RTC module: src/rtc.cpp, include/rtc.h
 - Storage & SD: src/storage.cpp, include/storage.h
-- Config & pin mappings: include/config.h
+- Config & pin mappings: include/config.h (LIMIT_SWITCH_DOWN_TIMEOUT_SEC, LIMIT_SWITCH_HOME_TIMEOUT_SEC)
 - Debug macros & compile-time guards: include/debug_config.h
 
 Notes for developers
 - Keep SPI operations wrapped with xSemaphoreSPI to avoid conflicts between MAX31865 and TFT.
 - When changing ProgramRecipe_t layout increment RECIPE_VERSION and implement migration logic in loadRecipesFromNVS().
 - Use getTimestampForLog() to get RTC-formatted timestamps; this now lives in src/rtc.cpp.
+- **Limit switch timeout configuration:**
+  - Adjust `LIMIT_SWITCH_DOWN_TIMEOUT_SEC` and `LIMIT_SWITCH_HOME_TIMEOUT_SEC` in include/config.h for different mechanical systems
+  - Failure tracking data is stored in SystemStatus_t and initialized in main.cpp setup()
+  - Warning popups use the transient popup system in display_ui.cpp with 5-second duration
 
 "Quick trace" example (call graph for SAVE_RECORD)
 User presses start -> SafetyTask transitions states -> at STATE_HOME_LIMIT -> SafetyTask: compose CSV -> getTimestampForLog(ts) -> xQueueSend(xLogQueue, csv) -> Task_Logger receives -> logToSD(csv) -> SD.open("/process_history.csv", FILE_APPEND) -> write line -> pushRecentLog(csv).
+
+"Quick trace" example (limit switch timeout)
+User presses start -> SafetyTask transitions to STATE_MOVE_DOWN -> down limit not detected within LIMIT_SWITCH_DOWN_TIMEOUT_SEC -> motor stops -> failure counter increments -> showLimitSwitchWarning() called -> TFT popup appears -> process continues to STATE_DOWN_LIMIT.
 
 This document is a living artifact; update it when major codeflow changes are made.

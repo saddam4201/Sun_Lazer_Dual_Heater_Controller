@@ -19,5 +19,6 @@ void initDisplayAndWeb();
 void updateTFTDisplay();
 void setupWebServer();
 void handleButtonInputs();
+void showLimitSwitchWarning(const char* message);
 
 #endif // DISPLAY_UI_H

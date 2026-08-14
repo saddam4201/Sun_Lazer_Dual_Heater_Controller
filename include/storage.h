@@ -7,6 +7,11 @@ bool initStorageModules();
 void loadRecipesFromNVS();
 void saveRecipeToNVS(uint8_t index);
 void saveAllRecipesToNVS();
+
+// Start mode persistence
+void saveStartModeToNVS(bool autoMode);
+bool loadStartModeFromNVS(bool *autoMode);
+
 void logToSD(const char* logEntry);
 
 // Recent logs in RAM

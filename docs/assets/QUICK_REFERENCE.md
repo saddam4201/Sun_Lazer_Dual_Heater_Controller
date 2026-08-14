@@ -39,6 +39,10 @@ Service tests (use with care)
 - Motor jog: tests motor driver briefly — ensure mechanism clear.
 - SSR test: toggles SSR outputs for wiring check; use safe load.
 - Calibration: HX711 tare and MAX31865 sensor check in service menu.
+- **Limit switch monitoring:**
+  - Service screen shows failure counts for down/home limit switches (RED if > 0)
+  - Use `[DN]+[->]` to reset failure counters after fixing issues
+  - Monitor counts to identify mechanical problems
 
 PID tuning tips (quick)
 1. Start Ki = 0, Kd = 0.
@@ -51,6 +55,11 @@ If things fail
 - SD missing: check SD CS wiring and card seating.
 - RTC wrong: check I2C wiring and battery; set via TFT or /rtc/set.
 - Sensors off: check PT100/MAX31865 wiring and HX711 connections.
+- **Limit switch timeout warnings:**
+  - Red-bordered popup appears on TFT when limit switch fails to activate
+  - Check mechanical system and limit switch wiring immediately
+  - Review failure counts on Service screen
+  - Reset counters with `[DN]+[->]` after fixing the issue
 
 Support
 - See USER_GUIDE.md for full instructions and troubleshooting.

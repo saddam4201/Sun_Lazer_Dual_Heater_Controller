@@ -203,6 +203,29 @@ void saveAllRecipesToNVS() {
     DEBUG_PRINTF("[NVS] All recipes saved to NVS.\n");
 }
 
+void saveStartModeToNVS(bool autoMode) {
+    bool ok = preferences.begin("sun_lazer", false);
+    if (!ok) {
+        DEBUG_PRINTF("[NVS] preferences.begin(write) failed: cannot save start mode\n");
+        return;
+    }
+    preferences.putUInt("cfg_start_auto", autoMode ? 1U : 0U);
+    preferences.end();
+    DEBUG_PRINTF("[NVS] start mode saved: %s\n", autoMode ? "AUTO" : "MANUAL");
+}
+
+bool loadStartModeFromNVS(bool *autoMode) {
+    bool ok = preferences.begin("sun_lazer", true);
+    if (!ok) {
+        if (autoMode) *autoMode = true; // default to auto
+        return false;
+    }
+    uint32_t v = preferences.getUInt("cfg_start_auto", 1U);
+    if (autoMode) *autoMode = (v != 0U);
+    preferences.end();
+    return true;
+}
+
 void pushRecentLog(const char* csvLine) {
     strncpy(recentLogs[recentLogHead], csvLine, sizeof(recentLogs[0]) - 1);
     recentLogs[recentLogHead][sizeof(recentLogs[0]) - 1] = '\0';

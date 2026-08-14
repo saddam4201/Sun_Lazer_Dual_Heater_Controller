@@ -35,6 +35,49 @@
 #define ENABLE_SERIAL_TFT 1
 #endif
 
+// Enable serial input emulation of buttons (1..5 keys act as buttons 1=UP,2=DOWN,3=LEFT,4=RIGHT,5=OK)
+// Set to 1 to use serial keys instead of physical buttons
+#ifndef INPUT_USE_SERIAL
+#define INPUT_USE_SERIAL 1
+#endif
+
+// Enable serial simulator mode: when enabled and INPUT_USE_SERIAL is 1, terminal commands
+// prefixed with ':' allow simulating inputs such as limit switches, temperatures, torque, and relay outputs.
+// Example commands (send as a line starting with ':'):
+//   :down on|off       -- set Down limit switch state
+//   :home on|off       -- set Home limit switch state
+//   :h1 <float>        -- set H1 actual temperature (C)
+//   :h2 <float>        -- set H2 actual temperature (C)
+//   :torque <float>    -- set current torque (Nm)
+//   :ssr1 on|off       -- set SSR1 output
+//   :ssr2 on|off       -- set SSR2 output
+//   :motor_down on|off -- set motor down output
+//   :motor_up on|off   -- set motor up output
+//   :show              -- print current simulated status
+#ifndef INPUT_SERIAL_SIMULATOR
+#define INPUT_SERIAL_SIMULATOR 1
+#endif
+
+// Per-device compile-time toggles (set to 0 to disable device and use default/simulated values)
+#ifndef ENABLE_MAX31865
+#define ENABLE_MAX31865 1
+#endif
+
+#ifndef ENABLE_HX711
+#define ENABLE_HX711 1
+#endif
+
+// Per-heater compile-time toggles (disable individual heater channel)
+#ifndef ENABLE_H1
+#define ENABLE_H1 1
+#endif
+
+#ifndef ENABLE_H2
+#define ENABLE_H2 1
+#endif
+
+// Note: ENABLE_SD_CARD and ENABLE_RTC already present above
+
 // Sensor CS Pins
 #define PIN_MAX31865_CS1 14
 #define PIN_MAX31865_CS2 15
@@ -67,6 +110,18 @@
 // Recipe storage validation
 #define RECIPE_MAGIC    0xABCD
 #define RECIPE_VERSION  1
+
+// Limit switch timeouts (seconds). When moving up/down, if the corresponding limit switch
+// is not detected within this timeout the controller will stop the motor and proceed
+// to the next logical state (instead of triggering a hard safety shutdown).
+// Separate timeouts for down and home limit switches for better control.
+#ifndef LIMIT_SWITCH_DOWN_TIMEOUT_SEC
+#define LIMIT_SWITCH_DOWN_TIMEOUT_SEC 30
+#endif
+
+#ifndef LIMIT_SWITCH_HOME_TIMEOUT_SEC
+#define LIMIT_SWITCH_HOME_TIMEOUT_SEC 30
+#endif
 
 // 13-State Machine Definition
 typedef enum {
@@ -120,6 +175,23 @@ struct SystemStatus_t {
     bool motor_up_running;
     uint8_t active_program_idx;
     char alarm_msg[32];
+
+    // Boot health status
+    bool boot_ok;
+    char boot_msg[64];
+
+    // Force-start confirmation state (when Auto blocks start)
+    bool forceStartPending;
+    uint32_t forceStartUntilMs;
+
+    // Start mode (auto/manual)
+    bool start_mode_auto;
+
+    // Limit switch failure tracking
+    uint32_t down_limit_fail_count;     // number of times down limit failed to activate
+    uint32_t home_limit_fail_count;     // number of times home limit failed to activate
+    uint32_t last_down_limit_fail_ms;   // timestamp of last down limit failure
+    uint32_t last_home_limit_fail_ms;   // timestamp of last home limit failure
 };
 
 #define LOG_RECENT_COUNT 10 // number of recent logs kept in RAM; changeable

@@ -61,6 +61,11 @@ Key screens and how to use them
 - Motor jog: test motor outputs briefly; use only with the mechanism clear.
 - Heater SSR test: toggles SSR outputs to confirm wiring (use safe low-voltage dummy load if available).
 - Calibration steps: HX711 tare/zero and MAX31865 sensor checks are available from service menu.
+- **Limit switch failure monitoring:**
+  - Service screen displays failure counts for down and home limit switches
+  - Counts highlighted in RED when failures have occurred
+  - Use `[DN]+[->]` button combo to reset failure counters
+  - Monitor these counts to identify mechanical issues or switch problems
 
 SD card logging and recent logs
 - Logs format: CSV file saved to SD: /process_history.csv.
@@ -90,6 +95,24 @@ Interpreting alarms and logs
 - Alarm codes are short numeric values; check README or source code alarm enum to match codes to failures (e.g., OVER_TEMP, TORQUE_LIMIT, RTC_FAIL).
 - Use process_history.csv to analyze temperature curves and torque history for tuning and debugging.
 
+Limit switch timeout warnings
+- When a limit switch fails to activate within the configured timeout period:
+  - A **red-bordered warning popup** appears on the TFT display for 5 seconds
+  - The popup shows "WARNING!" header and the failure count
+  - Example: "Down limit timeout! Failures: 2"
+  - The motor stops automatically to prevent damage
+  - The process continues to the next state (non-blocking behavior)
+- **Actions to take:**
+  - Immediately check the mechanical system and limit switch wiring
+  - Inspect the limit switch for physical damage or misalignment
+  - Review failure counts on the Service screen
+  - Reset failure counters after addressing the issue
+- **Configuration:**
+  - Timeout values are set in `include/config.h`:
+    - `LIMIT_SWITCH_DOWN_TIMEOUT_SEC` (default: 30 seconds)
+    - `LIMIT_SWITCH_HOME_TIMEOUT_SEC` (default: 30 seconds)
+  - Adjust these values based on your mechanical system's timing requirements
+
 Audio / Visual feedback
 - On successful actions (RTC save, recipe save) a small beep or blink occurs using the debug test-point GPIO by default (DEBUG_TP_GPIO, default GPIO24). For production, a dedicated buzzer pin is recommended.
 
@@ -99,6 +122,12 @@ Troubleshooting
 - RTC not present or wrong time: check I2C wiring (SDA/SCL), RTC battery, and run RTC Set from TFT or /rtc/set endpoint.
 - Temperature readings inconsistent: verify MAX31865 wiring, PT100 wiring (3-wire recommended), and configuration (2/3/4-wire if module supports).
 - PID oscillation/overshoot: reduce Kp, increase Kd slightly, or reduce Ki; make small incremental changes and test.
+- **Limit switch timeout warnings:**
+  - Frequent timeout warnings indicate mechanical issues or switch problems
+  - Check limit switch wiring, mechanical alignment, and switch operation
+  - Review failure counts on Service screen to identify patterns
+  - Adjust timeout values in `include/config.h` if your system requires longer travel times
+  - Use `[DN]+[->]` on Service screen to reset counters after fixing the issue
 
 Firmware updates and development
 - Firmware built with PlatformIO (Espressif32, Arduino framework). See platformio.ini for dependencies (TFT_eSPI, RTClib, etc.).

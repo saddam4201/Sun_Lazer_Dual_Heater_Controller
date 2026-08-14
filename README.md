@@ -3,7 +3,7 @@ Sun Lazer Dual Heater Controller — Release Notes
 This README summarizes the recent updates, implemented features, usage notes, and next steps. Treat this as a release-note for the current firmware state.
 
 Version: WIP (post-implementation checkpoint)
-Date: 2026-08-10
+Date: 2026-08-15
 
 Implemented features (summary)
 - PID temperature control
@@ -37,6 +37,12 @@ Implemented features (summary)
 
 - Safety, service and hardware
   - Safety trips: torque limit detection, travel timeouts, sensor disconnect checks.
+  - **NEW: Separate limit switch timeout handling:**
+    - Individual timeout values for down limit (`LIMIT_SWITCH_DOWN_TIMEOUT_SEC`) and home limit (`LIMIT_SWITCH_HOME_TIMEOUT_SEC`) switches.
+    - Failure tracking: counts and timestamps for each limit switch failure.
+    - **TFT warning popups** with red border and yellow "WARNING!" header when limit switch timeout occurs.
+    - Failure counts displayed on Service screen (highlighted in red when > 0).
+    - Manual reset capability via `[DN]+[->]` button combo on Service screen or `:reset_fail` serial command.
   - Service tests: heater SSR toggle and motor jog (2 s), displayed on SERVICE screen.
   - Debug test-point:
     - Enabled by default and assigned to GPIO24.
@@ -68,11 +74,36 @@ How to set RTC (two ways)
   - GET /rtc  -> returns current time
   - GET /rtc/set?iso=YYYY-MM-DDTHH:MM:SS  -> sets RTC (same validation applies)
 
+How to set RTC (two ways)
+- Via TFT:
+  - From SERVICE screen press Down + OK to open the RTC editor.
+  - Use UP/DOWN to adjust selected field, RIGHT to move to next, OK to save and LEFT to cancel.
+  - On save, the UI validates the date/time (month lengths and leap years). A confirmation popup appears and the debug-test pin blinks/beeps on success or failure.
+- Via web:
+  - GET /rtc  -> returns current time
+  - GET /rtc/set?iso=YYYY-MM-DDTHH:MM:SS  -> sets RTC (same validation applies)
+
+Limit switch timeout monitoring
+- The system now tracks failures for both down and home limit switches separately.
+- When a limit switch fails to activate within its timeout period:
+  - Motor stops automatically
+  - **TFT warning popup** appears for 5 seconds with failure count
+  - Failure counter increments
+  - Serial warning message is logged
+- View failure counts on Service screen (highlighted in red when > 0)
+- Reset failure counters:
+  - Via TFT: Press `[DN]+[->]` on Service screen
+  - Via serial: Send command `:reset_fail` in simulator mode
+- Configure timeouts in `include/config.h`:
+  - `LIMIT_SWITCH_DOWN_TIMEOUT_SEC` (default: 30s)
+  - `LIMIT_SWITCH_HOME_TIMEOUT_SEC` (default: 30s)
+
 Known issues and constraints
 - PlatformIO/Build: this repository assumes PlatformIO for build/flash. Ensure PlatformIO is installed locally — earlier environment lacked it.
 - Touch support: TFT_eSPI warns if TOUCH_CS is not defined; touch is optional and not currently used.
 - RTC behaviour: on RTC power loss the DS3231 is set to compile-time; set correct time via TFT or web after flashing if necessary.
 - Day field editing in the TFT clamps only on save; the UI allows changing day freely but the save will fail for invalid pairs. (Can be tightened to clamp during editing on request.)
+- **Limit switch timeout behavior:** When a limit switch fails to activate within the configured timeout, the system stops the motor and continues to the next state rather than triggering a hard safety shutdown. This is intentional to avoid process blocking, but operators should monitor failure counts on the Service screen.
 
 Next steps / Recommendations
 - Web endpoints for recent logs (JSON) and program list (optional) — quick to add for remote verification.
@@ -102,4 +133,5 @@ Changelog (high level)
 - Added: Service tests and max-torque display
 - Added: Debug test-point compile-time guards and runtime boot prints
 - Added: Minimal bundled PID helper to avoid missing registry packages
+- **NEW: Separate limit switch timeout system with failure tracking and TFT warning popups**
 
