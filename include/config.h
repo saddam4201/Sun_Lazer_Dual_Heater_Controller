@@ -35,6 +35,20 @@
 #define ENABLE_SERIAL_TFT 1
 #endif
 
+// Enable Android / Mobile App Remote Control & Telemetry API
+#ifndef ENABLE_APP_REMOTE
+#define ENABLE_APP_REMOTE 1
+#endif
+
+// Virtual Button bitmasks for Remote App Control
+enum AppButtonMask_t {
+    APP_BTN_UP_BIT    = (1 << 0),
+    APP_BTN_DOWN_BIT  = (1 << 1),
+    APP_BTN_LEFT_BIT  = (1 << 2),
+    APP_BTN_RIGHT_BIT = (1 << 3),
+    APP_BTN_OK_BIT    = (1 << 4)
+};
+
 // Enable serial input emulation of buttons (1..5 keys act as buttons 1=UP,2=DOWN,3=LEFT,4=RIGHT,5=OK)
 // Set to 1 to use serial keys instead of physical buttons
 #ifndef INPUT_USE_SERIAL

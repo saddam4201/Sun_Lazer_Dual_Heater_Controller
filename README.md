@@ -112,17 +112,21 @@ Next steps / Recommendations
 - Run hardware tests: verify MAX31865 readings, PID tuning behavior, SD card writes, RTC persistence, and safety trips.
 
 Files of interest
+- **NEW: Android Companion Application & Parallel TFT Display Mirroring:**
+  - Dedicated Android application created in `android/` with Material Design 3 and Jetpack Compose.
+  - Compile-time macro `ENABLE_APP_REMOTE` in `include/config.h` (toggles all REST/JSON endpoints & remote buffers).
+  - Parallel display mirroring across all 7 TFT screens (Home, Program Select, Edit, Timer Edit, PID Tuning, Service, RTC Set).
+  - Tactile Virtual D-Pad (UP, DOWN, LEFT, RIGHT, OK) with haptic feedback operating in parallel with physical & serial inputs.
+  - REST endpoints: `GET /api/status`, `POST /api/button`, `GET/POST /api/recipes`, `POST /api/control`, `GET /api/logs`.
+
+Files of interest
 - src/main.cpp — boot sequence, task creation, boot diagnostics
 - src/control_tasks.cpp — main state machine, PID compute, SSR time-proportioning, logging enqueue
-- src/display_ui.cpp / include/display_ui.h — TFT UI screens and button handling (includes new RTC editor)
-- src/rtc.cpp / include/rtc.h — RTC module (init, set, get, web handlers) — newly separated
+- src/display_ui.cpp / include/display_ui.h — TFT UI screens, button handling, and App REST API endpoints
+- src/rtc.cpp / include/rtc.h — RTC module (init, set, get, web handlers)
 - src/storage.cpp / include/storage.h — SD init, CSV logging, NVS recipe migration, recent-in-RAM log buffer
-- include/config.h — pin definitions, ProgramRecipe_t struct (per-program PID), LOG_RECENT_COUNT
-- include/debug_config.h — debug macros and compile-time guards
-
-Contact / support
-- If you want any of the recommended next steps implemented, tell me which and I will update the repo.
-- If a build fails locally, paste the platformio run output here and I will triage.
+- include/config.h — pin definitions, ProgramRecipe_t struct, ENABLE_APP_REMOTE macro, AppButtonMask_t
+- android/ — Standalone Native Android application project
 
 Changelog (high level)
 - Added: PID control, per-program PID storage, PID tuning UI
@@ -132,6 +136,7 @@ Changelog (high level)
 - Added: NVS recipe migration to preserve older data
 - Added: Service tests and max-torque display
 - Added: Debug test-point compile-time guards and runtime boot prints
-- Added: Minimal bundled PID helper to avoid missing registry packages
-- **NEW: Separate limit switch timeout system with failure tracking and TFT warning popups**
+- Added: Separate limit switch timeout system with failure tracking and TFT warning popups
+- **Added: Android Companion App & Remote Control API with Parallel TFT Screen Mirroring (`ENABLE_APP_REMOTE`)**
+
 

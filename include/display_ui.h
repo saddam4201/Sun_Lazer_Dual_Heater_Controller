@@ -21,4 +21,9 @@ void setupWebServer();
 void handleButtonInputs();
 void showLimitSwitchWarning(const char* message);
 
+#if ENABLE_APP_REMOTE
+void injectAppButton(uint8_t btnMask);
+void setupAppRemoteEndpoints();
+#endif
+
 #endif // DISPLAY_UI_H

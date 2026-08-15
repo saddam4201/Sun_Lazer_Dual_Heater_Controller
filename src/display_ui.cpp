@@ -3,6 +3,7 @@
 #include "storage.h"
 #include "debug_config.h"
 #include "rtc.h"
+#include "gpio_safe.h"
 #if ENABLE_SERIAL_TFT
 #include "serial_display.h"
 #endif
@@ -87,17 +88,37 @@ void initDisplayAndWeb() {
     setupWebServer();
 }
 
+#if ENABLE_APP_REMOTE
+static volatile uint8_t g_appButtonMask = 0;
+
+void injectAppButton(uint8_t btnMask) {
+    g_appButtonMask |= btnMask;
+}
+#endif
+
 void handleButtonInputs() {
     static uint32_t lastButtonPress = 0;
     if (millis() - lastButtonPress < 150) return; // Non-blocking debounce
+
+    bool btnUp = false, btnDown = false, btnLeft = false, btnRight = false, btnOk = false;
+
+#if ENABLE_APP_REMOTE
+    uint8_t remoteMask = g_appButtonMask;
+    if (remoteMask != 0) {
+        g_appButtonMask = 0;
+        if (remoteMask & APP_BTN_UP_BIT)    btnUp = true;
+        if (remoteMask & APP_BTN_DOWN_BIT)  btnDown = true;
+        if (remoteMask & APP_BTN_LEFT_BIT)  btnLeft = true;
+        if (remoteMask & APP_BTN_RIGHT_BIT) btnRight = true;
+        if (remoteMask & APP_BTN_OK_BIT)    btnOk = true;
+    }
+#endif
 
 #if INPUT_USE_SERIAL
     // Serial-mode: support two interaction styles:
     //  1) Single-key buttons '1'..'5' map to UP/DOWN/LEFT/RIGHT/OK
     //  2) Command lines starting with ':' allow advanced simulation (when INPUT_SERIAL_SIMULATOR=1)
     //     commands are entered as a line terminated by Enter, e.g. ':h1 120.5' or ':down on'
-    bool btnUp = false, btnDown = false, btnLeft = false, btnRight = false, btnOk = false;
-
     static char cmdBuf[128];
     static size_t cmdLen = 0;
     static bool cmdMode = false; // true when a ':' command is active
@@ -212,11 +233,11 @@ void handleButtonInputs() {
     if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk && !cmdMode) return;
     lastButtonPress = millis();
 #else
-    bool btnUp    = (digitalRead(PIN_BTN_UP) == LOW);
-    bool btnDown  = (digitalRead(PIN_BTN_DOWN) == LOW);
-    bool btnLeft  = (digitalRead(PIN_BTN_LEFT) == LOW);
-    bool btnRight = (digitalRead(PIN_BTN_RIGHT) == LOW);
-    bool btnOk    = (digitalRead(PIN_BTN_OK) == LOW);
+    if (digitalRead(PIN_BTN_UP) == LOW)    btnUp = true;
+    if (digitalRead(PIN_BTN_DOWN) == LOW)  btnDown = true;
+    if (digitalRead(PIN_BTN_LEFT) == LOW)  btnLeft = true;
+    if (digitalRead(PIN_BTN_RIGHT) == LOW) btnRight = true;
+    if (digitalRead(PIN_BTN_OK) == LOW)    btnOk = true;
 
     if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk) return;
     lastButtonPress = millis();
@@ -934,17 +955,320 @@ void updateTFTDisplay() {
     }
 }
 
+#if ENABLE_APP_REMOTE
+static void sendCorsHeaders() {
+    webServer.sendHeader("Access-Control-Allow-Origin", "*");
+    webServer.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+static const char* getScreenName(UIScreen_t screen) {
+    switch (screen) {
+        case SCREEN_HOME: return "HOME";
+        case SCREEN_PROGRAM_SELECT: return "PROGRAM_SELECT";
+        case SCREEN_PROGRAM_EDIT: return "PROGRAM_EDIT";
+        case SCREEN_TIMER_EDIT: return "TIMER_EDIT";
+        case SCREEN_PID_TUNING: return "PID_TUNING";
+        case SCREEN_SERVICE: return "SERVICE";
+        case SCREEN_RTC_SET: return "RTC_SET";
+        default: return "UNKNOWN";
+    }
+}
+
+static void handleApiStatus() {
+    sendCorsHeaders();
+    String json = "{";
+    json += "\"state\":" + String((int)sysStatus.currentState) + ",";
+    json += "\"state_name\":\"" + String(stateNames[sysStatus.currentState]) + "\",";
+    json += "\"screen\":" + String((int)currentScreen) + ",";
+    json += "\"screen_name\":\"" + String(getScreenName(currentScreen)) + "\",";
+    json += "\"selected_edit_field\":" + String(selectedEditField) + ",";
+    json += "\"timer_edit_field\":" + String(timerEdit_field) + ",";
+    json += "\"pid_edit_field\":" + String(pidEdit_field) + ",";
+    json += "\"rtc_edit_field\":" + String(rtcEdit_field) + ",";
+    json += "\"h1_actual\":" + String(sysStatus.h1_actual_c, 2) + ",";
+    json += "\"h2_actual\":" + String(sysStatus.h2_actual_c, 2) + ",";
+    ProgramRecipe_t &curRec = recipes[sysStatus.active_program_idx];
+    json += "\"h1_setpoint\":" + String(curRec.h1_setpoint_c, 2) + ",";
+    json += "\"h2_setpoint\":" + String(curRec.h2_setpoint_c, 2) + ",";
+    json += "\"torque\":" + String(sysStatus.current_torque_nm, 3) + ",";
+    json += "\"max_torque\":" + String(sysStatus.max_torque_nm, 3) + ",";
+    json += "\"torque_limit\":" + String(curRec.torque_limit_nm, 2) + ",";
+    json += "\"temp_tolerance\":" + String(curRec.temp_tolerance_c, 2) + ",";
+    json += "\"remaining_time_sec\":" + String(sysStatus.remaining_time_sec) + ",";
+    json += "\"total_time_sec\":" + String(curRec.process_time_sec) + ",";
+    json += "\"down_limit\":" + String(sysStatus.down_limit_active ? "true" : "false") + ",";
+    json += "\"home_limit\":" + String(sysStatus.home_limit_active ? "true" : "false") + ",";
+    json += "\"motor_down\":" + String(sysStatus.motor_down_running ? "true" : "false") + ",";
+    json += "\"motor_up\":" + String(sysStatus.motor_up_running ? "true" : "false") + ",";
+    json += "\"ssr1\":" + String(digitalRead(PIN_SSR_1) ? "true" : "false") + ",";
+    json += "\"ssr2\":" + String(digitalRead(PIN_SSR_2) ? "true" : "false") + ",";
+    json += "\"active_prog_idx\":" + String(sysStatus.active_program_idx) + ",";
+    json += "\"prog_name\":\"" + String(curRec.name) + "\",";
+    json += "\"alarm_msg\":\"" + String(sysStatus.alarm_msg) + "\",";
+    json += "\"boot_ok\":" + String(sysStatus.boot_ok ? "true" : "false") + ",";
+    json += "\"boot_msg\":\"" + String(sysStatus.boot_msg) + "\",";
+    json += "\"start_mode_auto\":" + String(sysStatus.start_mode_auto ? "true" : "false") + ",";
+    json += "\"force_start_pending\":" + String(sysStatus.forceStartPending ? "true" : "false") + ",";
+    json += "\"down_fail_count\":" + String(sysStatus.down_limit_fail_count) + ",";
+    json += "\"home_fail_count\":" + String(sysStatus.home_limit_fail_count) + ",";
+    char rtcBuf[32];
+    getTimestampForLog(rtcBuf, sizeof(rtcBuf));
+    json += "\"rtc_time\":\"" + String(rtcBuf) + "\",";
+    json += "\"uptime_ms\":" + String(millis());
+    json += "}";
+    webServer.send(200, "application/json", json);
+}
+
+static void handleApiButton() {
+    sendCorsHeaders();
+    String key = "";
+    if (webServer.hasArg("key")) {
+        key = webServer.arg("key");
+    } else if (webServer.hasArg("plain")) {
+        String body = webServer.arg("plain");
+        if (body.indexOf("\"up\"") >= 0 || body.indexOf("UP") >= 0 || body.indexOf("up") >= 0) key = "up";
+        else if (body.indexOf("\"down\"") >= 0 || body.indexOf("DOWN") >= 0 || body.indexOf("down") >= 0) key = "down";
+        else if (body.indexOf("\"left\"") >= 0 || body.indexOf("LEFT") >= 0 || body.indexOf("left") >= 0) key = "left";
+        else if (body.indexOf("\"right\"") >= 0 || body.indexOf("RIGHT") >= 0 || body.indexOf("right") >= 0) key = "right";
+        else if (body.indexOf("\"ok\"") >= 0 || body.indexOf("OK") >= 0 || body.indexOf("ok") >= 0) key = "ok";
+    }
+
+    uint8_t mask = 0;
+    if (key.equalsIgnoreCase("up") || key == "1") mask = APP_BTN_UP_BIT;
+    else if (key.equalsIgnoreCase("down") || key == "2") mask = APP_BTN_DOWN_BIT;
+    else if (key.equalsIgnoreCase("left") || key == "3") mask = APP_BTN_LEFT_BIT;
+    else if (key.equalsIgnoreCase("right") || key == "4") mask = APP_BTN_RIGHT_BIT;
+    else if (key.equalsIgnoreCase("ok") || key == "5") mask = APP_BTN_OK_BIT;
+
+    if (mask != 0) {
+        injectAppButton(mask);
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"injected\":\"" + key + "\"}");
+    } else {
+        webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid key (use up, down, left, right, ok)\"}");
+    }
+}
+
+static void handleApiRecipesGet() {
+    sendCorsHeaders();
+    String json = "[";
+    for (int i = 0; i < 10; i++) {
+        if (i > 0) json += ",";
+        json += "{";
+        json += "\"idx\":" + String(i) + ",";
+        json += "\"name\":\"" + String(recipes[i].name) + "\",";
+        json += "\"h1_setpoint\":" + String(recipes[i].h1_setpoint_c, 1) + ",";
+        json += "\"h2_setpoint\":" + String(recipes[i].h2_setpoint_c, 1) + ",";
+        json += "\"process_time_sec\":" + String(recipes[i].process_time_sec) + ",";
+        json += "\"torque_limit\":" + String(recipes[i].torque_limit_nm, 2) + ",";
+        json += "\"temp_tolerance\":" + String(recipes[i].temp_tolerance_c, 1) + ",";
+        json += "\"h1_Kp\":" + String(recipes[i].h1_Kp, 3) + ",";
+        json += "\"h1_Ki\":" + String(recipes[i].h1_Ki, 3) + ",";
+        json += "\"h1_Kd\":" + String(recipes[i].h1_Kd, 3) + ",";
+        json += "\"h2_Kp\":" + String(recipes[i].h2_Kp, 3) + ",";
+        json += "\"h2_Ki\":" + String(recipes[i].h2_Ki, 3) + ",";
+        json += "\"h2_Kd\":" + String(recipes[i].h2_Kd, 3);
+        json += "}";
+    }
+    json += "]";
+    webServer.send(200, "application/json", json);
+}
+
+static void handleApiRecipePost() {
+    sendCorsHeaders();
+    if (!webServer.hasArg("idx")) {
+        webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing idx argument (0-9)\"}");
+        return;
+    }
+    int idx = webServer.arg("idx").toInt();
+    if (idx < 0 || idx > 9) {
+        webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"idx out of range (0-9)\"}");
+        return;
+    }
+
+    if (webServer.hasArg("name")) {
+        strncpy(recipes[idx].name, webServer.arg("name").c_str(), sizeof(recipes[idx].name) - 1);
+        recipes[idx].name[sizeof(recipes[idx].name) - 1] = '\0';
+    }
+    if (webServer.hasArg("h1_setpoint")) recipes[idx].h1_setpoint_c = webServer.arg("h1_setpoint").toFloat();
+    if (webServer.hasArg("h2_setpoint")) recipes[idx].h2_setpoint_c = webServer.arg("h2_setpoint").toFloat();
+    if (webServer.hasArg("process_time_sec")) recipes[idx].process_time_sec = webServer.arg("process_time_sec").toInt();
+    if (webServer.hasArg("torque_limit")) recipes[idx].torque_limit_nm = webServer.arg("torque_limit").toFloat();
+    if (webServer.hasArg("temp_tolerance")) recipes[idx].temp_tolerance_c = webServer.arg("temp_tolerance").toFloat();
+    if (webServer.hasArg("h1_Kp")) recipes[idx].h1_Kp = webServer.arg("h1_Kp").toFloat();
+    if (webServer.hasArg("h1_Ki")) recipes[idx].h1_Ki = webServer.arg("h1_Ki").toFloat();
+    if (webServer.hasArg("h1_Kd")) recipes[idx].h1_Kd = webServer.arg("h1_Kd").toFloat();
+    if (webServer.hasArg("h2_Kp")) recipes[idx].h2_Kp = webServer.arg("h2_Kp").toFloat();
+    if (webServer.hasArg("h2_Ki")) recipes[idx].h2_Ki = webServer.arg("h2_Ki").toFloat();
+    if (webServer.hasArg("h2_Kd")) recipes[idx].h2_Kd = webServer.arg("h2_Kd").toFloat();
+
+    saveRecipeToNVS(idx);
+    webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Recipe updated and saved to NVS\"}");
+}
+
+static void handleApiControl() {
+    sendCorsHeaders();
+    String action = webServer.arg("action");
+    if (action.equalsIgnoreCase("start")) {
+        if (sysStatus.currentState == STATE_IDLE) {
+            bool allowStart = true;
+            if (sysStatus.start_mode_auto) {
+                ProgramRecipe_t &prec = recipes[sysStatus.active_program_idx];
+                if (!(fabs(sysStatus.h1_actual_c - prec.h1_setpoint_c) <= prec.temp_tolerance_c &&
+                      fabs(sysStatus.h2_actual_c - prec.h2_setpoint_c) <= prec.temp_tolerance_c)) {
+                    allowStart = false;
+                }
+            }
+            if (allowStart) {
+                transitionToState(STATE_SAFETY_CHECK);
+                webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Process started\"}");
+            } else {
+                sysStatus.forceStartPending = true;
+                sysStatus.forceStartUntilMs = millis() + 8000;
+                webServer.send(200, "application/json", "{\"status\":\"pending\",\"message\":\"Setpoint not reached. Force start pending.\"}");
+            }
+            return;
+        } else {
+            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"System not in IDLE state\"}");
+            return;
+        }
+    } else if (action.equalsIgnoreCase("force_start")) {
+        if (sysStatus.forceStartPending || sysStatus.currentState == STATE_IDLE) {
+            sysStatus.forceStartPending = false;
+            sysStatus.forceStartUntilMs = 0;
+            transitionToState(STATE_SAFETY_CHECK);
+            webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Force start executed\"}");
+            return;
+        }
+    } else if (action.equalsIgnoreCase("cancel_force")) {
+        sysStatus.forceStartPending = false;
+        sysStatus.forceStartUntilMs = 0;
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Force start canceled\"}");
+        return;
+    } else if (action.equalsIgnoreCase("reset_alarm") || action.equalsIgnoreCase("stop")) {
+        if (sysStatus.currentState == STATE_ALARM_FAULT) {
+            transitionToState(STATE_IDLE);
+            webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Alarm reset to IDLE\"}");
+            return;
+        } else {
+            triggerSafetyShutdown("MANUAL APP STOP TRIP");
+            webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Manual stop triggered\"}");
+            return;
+        }
+    } else if (action.equalsIgnoreCase("toggle_start_mode")) {
+        sysStatus.start_mode_auto = !sysStatus.start_mode_auto;
+        saveStartModeToNVS(sysStatus.start_mode_auto);
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"start_mode_auto\":" + String(sysStatus.start_mode_auto ? "true" : "false") + "}");
+        return;
+    } else if (action.equalsIgnoreCase("reset_fails")) {
+        sysStatus.down_limit_fail_count = 0;
+        sysStatus.home_limit_fail_count = 0;
+        sysStatus.last_down_limit_fail_ms = 0;
+        sysStatus.last_home_limit_fail_ms = 0;
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Limit switch failures reset\"}");
+        return;
+    } else if (action.equalsIgnoreCase("select_program")) {
+        if (webServer.hasArg("idx")) {
+            int idx = webServer.arg("idx").toInt();
+            if (idx >= 0 && idx < 10) {
+                sysStatus.active_program_idx = idx;
+                webServer.send(200, "application/json", "{\"status\":\"ok\",\"active_program_idx\":" + String(idx) + "}");
+                return;
+            }
+        }
+    } else if (action.equalsIgnoreCase("jog_up")) {
+        safeDigitalWrite(PIN_MOTOR_UP, HIGH);
+        delay(500);
+        safeDigitalWrite(PIN_MOTOR_UP, LOW);
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Jog up 500ms executed\"}");
+        return;
+    } else if (action.equalsIgnoreCase("jog_down")) {
+        safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
+        delay(500);
+        safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Jog down 500ms executed\"}");
+        return;
+    } else if (action.equalsIgnoreCase("toggle_ssr1")) {
+        int st = digitalRead(PIN_SSR_1);
+        safeDigitalWrite(PIN_SSR_1, st ? LOW : HIGH);
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"ssr1\":" + String(!st ? "true" : "false") + "}");
+        return;
+    } else if (action.equalsIgnoreCase("toggle_ssr2")) {
+        int st = digitalRead(PIN_SSR_2);
+        safeDigitalWrite(PIN_SSR_2, st ? LOW : HIGH);
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"ssr2\":" + String(!st ? "true" : "false") + "}");
+        return;
+    } else if (action.equalsIgnoreCase("set_screen")) {
+        if (webServer.hasArg("screen")) {
+            int sc = webServer.arg("screen").toInt();
+            if (sc >= 0 && sc <= 6) {
+                currentScreen = (UIScreen_t)sc;
+                webServer.send(200, "application/json", "{\"status\":\"ok\",\"screen\":" + String(sc) + "}");
+                return;
+            }
+        }
+    }
+
+    webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Unknown or invalid control action\"}");
+}
+
+static void handleApiLogs() {
+    sendCorsHeaders();
+    String json = "[";
+    for (uint8_t i = 0; i < LOG_RECENT_COUNT; i++) {
+        const char* l = getRecentLog(i);
+        if (!l) break;
+        if (i > 0) json += ",";
+        json += "\"" + String(l) + "\"";
+    }
+    json += "]";
+    webServer.send(200, "application/json", json);
+}
+
+void setupAppRemoteEndpoints() {
+    // CORS preflight handlers
+    auto sendOptions = []() {
+        sendCorsHeaders();
+        webServer.send(204);
+    };
+
+    webServer.on("/api/status", HTTP_OPTIONS, sendOptions);
+    webServer.on("/api/button", HTTP_OPTIONS, sendOptions);
+    webServer.on("/api/recipes", HTTP_OPTIONS, sendOptions);
+    webServer.on("/api/recipe", HTTP_OPTIONS, sendOptions);
+    webServer.on("/api/control", HTTP_OPTIONS, sendOptions);
+    webServer.on("/api/logs", HTTP_OPTIONS, sendOptions);
+
+    webServer.on("/api/status", HTTP_GET, handleApiStatus);
+    webServer.on("/api/button", HTTP_POST, handleApiButton);
+    webServer.on("/api/button", HTTP_GET, handleApiButton);
+    webServer.on("/api/recipes", HTTP_GET, handleApiRecipesGet);
+    webServer.on("/api/recipe", HTTP_POST, handleApiRecipePost);
+    webServer.on("/api/control", HTTP_POST, handleApiControl);
+    webServer.on("/api/control", HTTP_GET, handleApiControl);
+    webServer.on("/api/logs", HTTP_GET, handleApiLogs);
+}
+#endif
+
 void setupWebServer() {
     webServer.on("/", []() {
-        String html = "<html><body><h1>Sun Lazer Dashboard</h1>";
-        html += "<p>H1 Temp: " + String(sysStatus.h1_actual_c) + " C</p>";
-        html += "<p>H2 Temp: " + String(sysStatus.h2_actual_c) + " C</p>";
-        html += "<p>Torque: " + String(sysStatus.current_torque_nm) + " Nm</p>";
-        html += "<p>State: " + String(stateNames[sysStatus.currentState]) + "</p>";
+        String html = "<html><head><title>Sun Lazer Dashboard</title></head><body style='font-family:sans-serif;background:#121212;color:#eee;padding:20px;'>";
+        html += "<h2>Sun Lazer Dual Heater Controller</h2>";
+        html += "<p><b>State:</b> " + String(stateNames[sysStatus.currentState]) + "</p>";
+        html += "<p><b>H1 Temp:</b> " + String(sysStatus.h1_actual_c, 2) + " &deg;C</p>";
+        html += "<p><b>H2 Temp:</b> " + String(sysStatus.h2_actual_c, 2) + " &deg;C</p>";
+        html += "<p><b>Torque:</b> " + String(sysStatus.current_torque_nm, 3) + " Nm</p>";
+        html += "<p><b>Active Program:</b> " + String(recipes[sysStatus.active_program_idx].name) + "</p>";
+        html += "<hr><p>Android App Remote API: <code>/api/status</code>, <code>/api/button</code>, <code>/api/recipes</code>, <code>/api/control</code></p>";
         html += "</body></html>";
         webServer.send(200, "text/html", html);
     });
     // Add RTC web handlers (GET /rtc, GET/POST /rtc/set)
     addRTCWebHandlers(webServer);
+
+#if ENABLE_APP_REMOTE
+    setupAppRemoteEndpoints();
+#endif
+
     webServer.begin();
 }
