@@ -55,7 +55,7 @@
 //   :motor_up on|off   -- set motor up output
 //   :show              -- print current simulated status
 #ifndef INPUT_SERIAL_SIMULATOR
-#define INPUT_SERIAL_SIMULATOR 1
+#define INPUT_SERIAL_SIMULATOR 0
 #endif
 
 // Per-device compile-time toggles (set to 0 to disable device and use default/simulated values)

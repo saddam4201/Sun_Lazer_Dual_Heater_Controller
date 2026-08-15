@@ -149,6 +149,7 @@ void setup() {
 
 #if ENABLE_SERIAL_TFT || INPUT_USE_SERIAL
     // Print a concise boot summary of enabled/disabled modules to Serial (useful for testing)
+    Serial.println("Developer: Saddam Khan");
     Serial.println("[BOOT] Module summary:");
     Serial.printf("  Virtual TFT: %s\n", (ENABLE_SERIAL_TFT ? "ENABLED" : "DISABLED"));
     Serial.printf("  Serial input (button emulation): %s\n", (INPUT_USE_SERIAL ? "ENABLED" : "DISABLED"));
