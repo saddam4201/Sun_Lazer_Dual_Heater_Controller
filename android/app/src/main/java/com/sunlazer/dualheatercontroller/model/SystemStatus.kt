@@ -1,0 +1,41 @@
+package com.sunlazer.dualheatercontroller.model
+
+import com.google.gson.annotations.SerializedName
+
+data class SystemStatus(
+    @SerializedName("state") val state: Int = 1,
+    @SerializedName("state_name") val stateName: String = "IDLE",
+    @SerializedName("screen") val screen: Int = 0,
+    @SerializedName("screen_name") val screenName: String = "HOME",
+    @SerializedName("selected_edit_field") val selectedEditField: Int = 0,
+    @SerializedName("timer_edit_field") val timerEditField: Int = 0,
+    @SerializedName("pid_edit_field") val pidEditField: Int = 0,
+    @SerializedName("rtc_edit_field") val rtcEditField: Int = 0,
+    @SerializedName("h1_actual") val h1Actual: Float = 0.0f,
+    @SerializedName("h2_actual") val h2Actual: Float = 0.0f,
+    @SerializedName("h1_setpoint") val h1Setpoint: Float = 0.0f,
+    @SerializedName("h2_setpoint") val h2Setpoint: Float = 0.0f,
+    @SerializedName("torque") val torque: Float = 0.0f,
+    @SerializedName("max_torque") val maxTorque: Float = 0.0f,
+    @SerializedName("torque_limit") val torqueLimit: Float = 0.0f,
+    @SerializedName("temp_tolerance") val tempTolerance: Float = 2.0f,
+    @SerializedName("remaining_time_sec") val remainingTimeSec: Long = 0L,
+    @SerializedName("total_time_sec") val totalTimeSec: Long = 0L,
+    @SerializedName("down_limit") val downLimit: Boolean = false,
+    @SerializedName("home_limit") val homeLimit: Boolean = false,
+    @SerializedName("motor_down") val motorDown: Boolean = false,
+    @SerializedName("motor_up") val motorUp: Boolean = false,
+    @SerializedName("ssr1") val ssr1: Boolean = false,
+    @SerializedName("ssr2") val ssr2: Boolean = false,
+    @SerializedName("active_prog_idx") val activeProgIdx: Int = 0,
+    @SerializedName("prog_name") val progName: String = "P01",
+    @SerializedName("alarm_msg") val alarmMsg: String = "",
+    @SerializedName("boot_ok") val bootOk: Boolean = true,
+    @SerializedName("boot_msg") val bootMsg: String = "",
+    @SerializedName("start_mode_auto") val startModeAuto: Boolean = true,
+    @SerializedName("force_start_pending") val forceStartPending: Boolean = false,
+    @SerializedName("down_fail_count") val downFailCount: Long = 0L,
+    @SerializedName("home_fail_count") val homeFailCount: Long = 0L,
+    @SerializedName("rtc_time") val rtcTime: String = "N/A",
+    @SerializedName("uptime_ms") val uptimeMs: Long = 0L
+)
