@@ -54,7 +54,7 @@ void Task_SafetyAndControl(void *pvParameters) {
         sysStatus.current_torque_nm = raw_torque;
         if (raw_torque > sysStatus.max_torque_nm) sysStatus.max_torque_nm = raw_torque;
         if (raw_torque > recipes[sysStatus.active_program_idx].torque_limit_nm &&
-            (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_ALARM_FAULT)) {
+            (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT)) {
             triggerSafetyShutdown("TORQUE OVERLOAD TRIP");
         }
   #else
@@ -65,7 +65,7 @@ void Task_SafetyAndControl(void *pvParameters) {
             if (raw_torque > sysStatus.max_torque_nm) sysStatus.max_torque_nm = raw_torque;
 
             if (raw_torque > recipes[sysStatus.active_program_idx].torque_limit_nm &&
-               (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_ALARM_FAULT)) {
+               (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT)) {
                 triggerSafetyShutdown("TORQUE OVERLOAD TRIP");
             }
         }
@@ -77,6 +77,7 @@ void Task_SafetyAndControl(void *pvParameters) {
 
         switch (sysStatus.currentState) {
             case STATE_IDLE:
+            case STATE_READY:
 #if INPUT_SERIAL_SIMULATOR
                 // In simulator mode, motor outputs are controlled by terminal commands only
                 (void)PIN_MOTOR_DOWN; (void)PIN_MOTOR_UP;
@@ -242,9 +243,6 @@ void Task_SafetyAndControl(void *pvParameters) {
                 transitionToState(STATE_READY);
                 break;
 
-            case STATE_READY:
-                break;
-
             case STATE_ALARM_FAULT:
 #if INPUT_SERIAL_SIMULATOR
                 (void)PIN_MOTOR_DOWN; (void)PIN_MOTOR_UP; (void)PIN_SSR_1; (void)PIN_SSR_2;
@@ -262,11 +260,43 @@ void Task_SafetyAndControl(void *pvParameters) {
     }
 }
 
+float readPT100Temperature(Adafruit_MAX31865 &maxSensor, uint8_t &faultCode) {
+    faultCode = maxSensor.readFault(MAX31865_FAULT_NONE);
+    if (faultCode != 0) {
+        maxSensor.clearFault();
+        return NAN;
+    }
+
+    uint16_t rtd = maxSensor.readRTD();
+
+    // Check fault after conversion
+    faultCode = maxSensor.readFault(MAX31865_FAULT_NONE);
+    if (faultCode != 0) {
+        maxSensor.clearFault();
+        return NAN;
+    }
+
+    // Sanity check raw code (0x0000 = short, 0x7FFF = open circuit / disconnected)
+    if (rtd == 0 || rtd >= 0x7FFF) {
+        faultCode = 0xFF;
+        return NAN;
+    }
+
+    float temp = maxSensor.calculateTemperature(rtd, RNOMINAL, RREF);
+
+    // Sanity check temperature range (-50°C to +550°C for industrial PT100)
+    if (isnan(temp) || temp < -50.0f || temp > 550.0f) {
+        faultCode = 0xFE;
+        return NAN;
+    }
+
+    return temp;
+}
+
 void Task_TemperaturePID(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const uint32_t cycleWindowMs = 2000; // time-proportional SSR cycle window
+    const uint32_t cycleWindowMs = 1000; // 1s time proportioning window
 
-    // Initialize PID controllers with settings
     h1_pid.SetMode(AUTOMATIC);
     h1_pid.SetOutputLimits(0, 100);
     h2_pid.SetMode(AUTOMATIC);
@@ -279,10 +309,33 @@ void Task_TemperaturePID(void *pvParameters) {
         (void)xSemaphoreSPI;
         // sysStatus.h1_actual_c and h2_actual_c are driven by the simulator commands or defaults
   #else
-        if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(20)) == pdTRUE) {
-            sysStatus.h1_actual_c = max1.temperature(RNOMINAL, RREF);
-            sysStatus.h2_actual_c = max2.temperature(RNOMINAL, RREF);
+        if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(250)) == pdTRUE) {
+            uint8_t f1 = 0, f2 = 0;
+            float raw1 = readPT100Temperature(max1, f1);
+            float raw2 = readPT100Temperature(max2, f2);
             xSemaphoreGive(xSemaphoreSPI);
+
+            // Heater 1 validation and noise smoothing
+            if (!isnan(raw1)) {
+                if (sysStatus.h1_actual_c < -40.0f || sysStatus.h1_actual_c == 0.0f) {
+                    sysStatus.h1_actual_c = raw1;
+                } else {
+                    sysStatus.h1_actual_c = (sysStatus.h1_actual_c * 0.7f) + (raw1 * 0.3f);
+                }
+            } else if (f1 != 0) {
+                DEBUG_PRINTF("[MAX31865] H1 Fault: 0x%02X\n", f1);
+            }
+
+            // Heater 2 validation and noise smoothing
+            if (!isnan(raw2)) {
+                if (sysStatus.h2_actual_c < -40.0f || sysStatus.h2_actual_c == 0.0f) {
+                    sysStatus.h2_actual_c = raw2;
+                } else {
+                    sysStatus.h2_actual_c = (sysStatus.h2_actual_c * 0.7f) + (raw2 * 0.3f);
+                }
+            } else if (f2 != 0) {
+                DEBUG_PRINTF("[MAX31865] H2 Fault: 0x%02X\n", f2);
+            }
         }
   #endif
 #else
@@ -361,19 +414,22 @@ void Task_TemperaturePID(void *pvParameters) {
 
 void Task_UIAndWeb(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
+    uint32_t lastDisplayUpdate = 0;
 
     for (;;) {
         handleButtonInputs();
 
         webServer.handleClient();
 
-        if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(20)) == pdTRUE) {
-           // Serial.println("[TFT] Updating display...");
-            updateTFTDisplay();
-            xSemaphoreGive(xSemaphoreSPI);
+        if (millis() - lastDisplayUpdate >= 150) {
+            lastDisplayUpdate = millis();
+            if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(200)) == pdTRUE) {
+                updateTFTDisplay();
+                xSemaphoreGive(xSemaphoreSPI);
+            }
         }
 
-        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(50));
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(20));
     }
 }
 

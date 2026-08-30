@@ -140,11 +140,22 @@ void loadRecipesFromNVS() {
         uint32_t tstart = millis();
         bool userConfirmed = false;
         while ((millis() - tstart) < timeoutMs) {
-            // Button is active-low
+            // Physical button is active-low
+#if ENABLE_PHYSICAL_BUTTONS
             if (safeDigitalRead(PIN_BTN_OK) == LOW) {
                 userConfirmed = true;
                 break;
             }
+#endif
+#if INPUT_USE_SERIAL
+            if (Serial && Serial.available()) {
+                char c = Serial.read();
+                if (c == '5' || c == 'y' || c == 'Y' || c == '\n' || c == ' ') {
+                    userConfirmed = true;
+                    break;
+                }
+            }
+#endif
             delay(50);
         }
 
@@ -174,7 +185,33 @@ void loadRecipesFromNVS() {
 }
 
 
+void saveActiveProgramToNVS(uint8_t index) {
+    if (index >= 10) return;
+    bool ok = preferences.begin("sun_lazer", false);
+    if (!ok) {
+        DEBUG_PRINTF("[NVS] preferences.begin(write) failed: cannot save active program\n");
+        return;
+    }
+    preferences.putUChar("cfg_act_prog", index);
+    preferences.end();
+    DEBUG_PRINTF("[NVS] Active program index saved: %u\n", index);
+}
+
+bool loadActiveProgramFromNVS(uint8_t *index) {
+    bool ok = preferences.begin("sun_lazer", true);
+    if (!ok) {
+        if (index) *index = 0;
+        return false;
+    }
+    uint8_t v = preferences.getUChar("cfg_act_prog", 0);
+    if (v >= 10) v = 0;
+    if (index) *index = v;
+    preferences.end();
+    return true;
+}
+
 void saveRecipeToNVS(uint8_t index) {
+    if (index >= 10) return;
     // Ensure magic/version are present before writing
     recipes[index].magic = RECIPE_MAGIC;
     recipes[index].version = RECIPE_VERSION;
@@ -183,7 +220,9 @@ void saveRecipeToNVS(uint8_t index) {
     char key[16];
     snprintf(key, sizeof(key), "rec_%d", index);
     preferences.putBytes(key, &recipes[index], sizeof(ProgramRecipe_t));
+    preferences.putUChar("cfg_act_prog", index);
     preferences.end();
+    DEBUG_PRINTF("[NVS] Recipe %d and active program index saved.\n", index);
 }
 
 void saveAllRecipesToNVS() {

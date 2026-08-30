@@ -24,20 +24,21 @@ static bool performStartupChecks(char *reason, size_t len) {
     float t2 = recipes[sysStatus.active_program_idx].h2_setpoint_c;
     (void)t1; (void)t2; // used only to avoid unused warning if needed
   #else
-    if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(200)) == pdTRUE) {
-        float t1 = max1.temperature(RNOMINAL, RREF);
-        float t2 = max2.temperature(RNOMINAL, RREF);
+    if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(500)) == pdTRUE) {
+        uint8_t f1 = 0, f2 = 0;
+        float t1 = readPT100Temperature(max1, f1);
+        float t2 = readPT100Temperature(max2, f2);
         xSemaphoreGive(xSemaphoreSPI);
 
   #if ENABLE_H1
-        if (t1 < -10.0f) {
-            snprintf(reason, len, "H1 sensor error (read %.2f C)", t1);
+        if (isnan(t1) || t1 < -10.0f) {
+            snprintf(reason, len, "H1 PT100 fault (code 0x%02X, read %.1f C)", f1, isnan(t1) ? 0.0f : t1);
             return false;
         }
   #endif
   #if ENABLE_H2
-        if (t2 < -10.0f) {
-            snprintf(reason, len, "H2 sensor error (read %.2f C)", t2);
+        if (isnan(t2) || t2 < -10.0f) {
+            snprintf(reason, len, "H2 PT100 fault (code 0x%02X, read %.1f C)", f2, isnan(t2) ? 0.0f : t2);
             return false;
         }
   #endif
@@ -79,8 +80,8 @@ static bool performStartupChecks(char *reason, size_t len) {
 
 // Define Global Objects
 TFT_eSPI tft = TFT_eSPI();
-Adafruit_MAX31865 max1 = Adafruit_MAX31865(PIN_MAX31865_CS1, PIN_VSPI_MOSI, PIN_VSPI_MISO, PIN_VSPI_SCK);
-Adafruit_MAX31865 max2 = Adafruit_MAX31865(PIN_MAX31865_CS2, PIN_VSPI_MOSI, PIN_VSPI_MISO, PIN_VSPI_SCK);
+Adafruit_MAX31865 max1 = Adafruit_MAX31865(PIN_MAX31865_CS1, &SPI);
+Adafruit_MAX31865 max2 = Adafruit_MAX31865(PIN_MAX31865_CS2, &SPI);
 HX711 torqueScale;
 Preferences preferences;
 WebServer webServer(80);
@@ -104,6 +105,16 @@ void setup() {
     Serial.begin(115200);
 #endif
 
+    // Deselect all SPI devices initially to prevent bus contention
+    safePinMode(PIN_TFT_CS, OUTPUT);
+    safeDigitalWrite(PIN_TFT_CS, HIGH);
+    safePinMode(PIN_SD_CS, OUTPUT);
+    safeDigitalWrite(PIN_SD_CS, HIGH);
+    safePinMode(PIN_MAX31865_CS1, OUTPUT);
+    safeDigitalWrite(PIN_MAX31865_CS1, HIGH);
+    safePinMode(PIN_MAX31865_CS2, OUTPUT);
+    safeDigitalWrite(PIN_MAX31865_CS2, HIGH);
+
     // Actuator Pins (safe-checked)
     safePinMode(PIN_SSR_1, OUTPUT);
     safePinMode(PIN_SSR_2, OUTPUT);
@@ -115,13 +126,15 @@ void setup() {
     safeDigitalWrite(PIN_MOTOR_UP, LOW);
 
     // Sensor & Switch Inputs (safe-checked)
-    safePinMode(PIN_DOWN_LIMIT, INPUT);
-    safePinMode(PIN_HOME_LIMIT, INPUT);
+    safePinMode(PIN_DOWN_LIMIT, INPUT_PULLUP);
+    safePinMode(PIN_HOME_LIMIT, INPUT_PULLUP);
+#if ENABLE_PHYSICAL_BUTTONS
     safePinMode(PIN_BTN_UP, INPUT_PULLUP);
     safePinMode(PIN_BTN_DOWN, INPUT_PULLUP);
     safePinMode(PIN_BTN_RIGHT, INPUT_PULLUP);
     safePinMode(PIN_BTN_OK, INPUT_PULLUP);
     safePinMode(PIN_BTN_LEFT, INPUT_PULLUP);
+#endif
 
     // Sync Structures
     xSemaphoreSPI = xSemaphoreCreateMutex();
@@ -131,8 +144,21 @@ void setup() {
     SPI.begin(PIN_VSPI_SCK, PIN_VSPI_MISO, PIN_VSPI_MOSI);
     initDisplayAndWeb();
 
-    max1.begin(MAX31865_3WIRE);
-    max2.begin(MAX31865_3WIRE);
+    // Initialize MAX31865 RTD sensors in Continuous Conversion mode with 50Hz mains filter
+    max1.begin(MAX31865_WIRE_MODE);
+    max1.enableBias(true);
+    max1.autoConvert(true);
+    max1.enable50Hz(true);
+    max1.clearFault();
+
+    max2.begin(MAX31865_WIRE_MODE);
+    max2.enableBias(true);
+    max2.autoConvert(true);
+    max2.enable50Hz(true);
+    max2.clearFault();
+
+    // Settle time for continuous conversions
+    delay(100);
 
     torqueScale.begin(PIN_HX711_DOUT, PIN_HX711_SCK);
     torqueScale.set_scale(42050.0f);
@@ -152,6 +178,7 @@ void setup() {
     Serial.println("Developer: Saddam Khan");
     Serial.println("[BOOT] Module summary:");
     Serial.printf("  Virtual TFT: %s\n", (ENABLE_SERIAL_TFT ? "ENABLED" : "DISABLED"));
+    Serial.printf("  Physical buttons: %s\n", (ENABLE_PHYSICAL_BUTTONS ? "ENABLED" : "DISABLED"));
     Serial.printf("  Serial input (button emulation): %s\n", (INPUT_USE_SERIAL ? "ENABLED" : "DISABLED"));
     Serial.printf("  MAX31865 sensors: %s\n", (ENABLE_MAX31865 ? "ENABLED" : "DISABLED"));
     Serial.printf("  HX711 torque sensor: %s\n", (ENABLE_HX711 ? "ENABLED" : "DISABLED"));
@@ -159,13 +186,22 @@ void setup() {
     Serial.printf("  Heater H2 channel: %s\n", (ENABLE_H2 ? "ENABLED" : "DISABLED"));
     Serial.printf("  SD card support: %s\n", (ENABLE_SD_CARD ? "ENABLED" : "DISABLED"));
     Serial.printf("  RTC support: %s\n", (ENABLE_RTC ? "ENABLED" : "DISABLED"));
+    Serial.printf("  App Remote API: %s\n", (ENABLE_APP_REMOTE ? "ENABLED" : "DISABLED"));
 #endif
 
     // Ensure system status structure is zeroed to avoid transient garbage on boot
     memset(&sysStatus, 0, sizeof(sysStatus));
 
     sysStatus.currentState = STATE_IDLE;
-    sysStatus.active_program_idx = 0;
+    
+    // Load last selected active program from NVS (default: 0)
+    uint8_t savedProg = 0;
+    if (loadActiveProgramFromNVS(&savedProg) && savedProg < 10) {
+        sysStatus.active_program_idx = savedProg;
+    } else {
+        sysStatus.active_program_idx = 0;
+    }
+    DEBUG_PRINTF("[BOOT] Active Program: P%02d (%s)\n", sysStatus.active_program_idx + 1, recipes[sysStatus.active_program_idx].name);
     
     // Initialize limit switch failure tracking
     sysStatus.down_limit_fail_count = 0;
@@ -179,9 +215,9 @@ void setup() {
     sysStatus.start_mode_auto = startMode;
 
 #if INPUT_SERIAL_SIMULATOR
-    // Provide safe default simulated sensor values for terminal-only testing
-    sysStatus.h1_actual_c = recipes[sysStatus.active_program_idx].h1_setpoint_c;
-    sysStatus.h2_actual_c = recipes[sysStatus.active_program_idx].h2_setpoint_c;
+    // Provide safe default simulated sensor values for terminal-only testing (room temperature 25.0C)
+    sysStatus.h1_actual_c = 25.0f;
+    sysStatus.h2_actual_c = 25.0f;
     sysStatus.current_torque_nm = 0.0f;
     sysStatus.down_limit_active = false;
     sysStatus.home_limit_active = false;

@@ -49,11 +49,17 @@ enum AppButtonMask_t {
     APP_BTN_OK_BIT    = (1 << 4)
 };
 
+// Enable physical push button inputs
+#ifndef ENABLE_PHYSICAL_BUTTONS
+#define ENABLE_PHYSICAL_BUTTONS 1
+#endif
+
 // Enable serial input emulation of buttons (1..5 keys act as buttons 1=UP,2=DOWN,3=LEFT,4=RIGHT,5=OK)
-// Set to 1 to use serial keys instead of physical buttons
+// Set to 1 to enable serial keys in parallel with physical buttons
 #ifndef INPUT_USE_SERIAL
 #define INPUT_USE_SERIAL 1
 #endif
+
 
 // Enable serial simulator mode: when enabled and INPUT_USE_SERIAL is 1, terminal commands
 // prefixed with ':' allow simulating inputs such as limit switches, temperatures, torque, and relay outputs.
@@ -94,7 +100,7 @@ enum AppButtonMask_t {
 
 // Sensor CS Pins
 #define PIN_MAX31865_CS1 14
-#define PIN_MAX31865_CS2 15
+#define PIN_MAX31865_CS2 14
 
 // Torque Sensor Pins (TQ10 via HX711)
 #define PIN_HX711_DOUT   36
@@ -117,9 +123,18 @@ enum AppButtonMask_t {
 #define PIN_MOTOR_DOWN   21
 #define PIN_MOTOR_UP     22
 
-// PT100 Constants
-#define RREF      430.0f
-#define RNOMINAL  100.0f
+// PT100 Constants & Wire Mode
+#ifndef MAX31865_WIRE_MODE
+#define MAX31865_WIRE_MODE MAX31865_2WIRE // Options: MAX31865_2WIRE, MAX31865_3WIRE, MAX31865_4WIRE
+#endif
+
+#ifndef RREF
+#define RREF      430.0f // Reference resistor on MAX31865 breakout (430.0 for PT100, 4300.0 for PT1000)
+#endif
+
+#ifndef RNOMINAL
+#define RNOMINAL  100.0f // Nominal RTD resistance at 0 deg C (100.0 for PT100, 1000.0 for PT1000)
+#endif
 
 // Recipe storage validation
 #define RECIPE_MAGIC    0xABCD

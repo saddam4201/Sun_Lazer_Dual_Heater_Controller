@@ -114,6 +114,14 @@ void handleButtonInputs() {
     }
 #endif
 
+#if ENABLE_PHYSICAL_BUTTONS
+    if (safeDigitalRead(PIN_BTN_UP) == LOW)    btnUp = true;
+    if (safeDigitalRead(PIN_BTN_DOWN) == LOW)  btnDown = true;
+    if (safeDigitalRead(PIN_BTN_LEFT) == LOW)  btnLeft = true;
+    if (safeDigitalRead(PIN_BTN_RIGHT) == LOW) btnRight = true;
+    if (safeDigitalRead(PIN_BTN_OK) == LOW)    btnOk = true;
+#endif
+
 #if INPUT_USE_SERIAL
     // Serial-mode: support two interaction styles:
     //  1) Single-key buttons '1'..'5' map to UP/DOWN/LEFT/RIGHT/OK
@@ -228,20 +236,11 @@ void handleButtonInputs() {
                 break;
         }
     }
+#endif
 
-    // if no interactive keypresses and not in command-mode, return
-    if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk && !cmdMode) return;
-    lastButtonPress = millis();
-#else
-    if (digitalRead(PIN_BTN_UP) == LOW)    btnUp = true;
-    if (digitalRead(PIN_BTN_DOWN) == LOW)  btnDown = true;
-    if (digitalRead(PIN_BTN_LEFT) == LOW)  btnLeft = true;
-    if (digitalRead(PIN_BTN_RIGHT) == LOW) btnRight = true;
-    if (digitalRead(PIN_BTN_OK) == LOW)    btnOk = true;
-
+    // if no interactive keypresses from Remote App, Physical Buttons, or Serial, return
     if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk) return;
     lastButtonPress = millis();
-#endif
 
     // If a force-start confirmation is pending and we're on Home screen, handle confirmation inputs
     if (sysStatus.forceStartPending && currentScreen == SCREEN_HOME) {
@@ -279,29 +278,35 @@ void handleButtonInputs() {
             } else if (btnLeft) {
                 currentScreen = SCREEN_SERVICE;
             } else if (btnOk) {
-                if (sysStatus.currentState == STATE_IDLE) {
+                if (sysStatus.currentState == STATE_IDLE || sysStatus.currentState == STATE_READY) {
                     // Check start mode: auto prevents starting until setpoints are reached
                     bool allowStart = true;
                     if (sysStatus.start_mode_auto) {
                         ProgramRecipe_t &prec = recipes[sysStatus.active_program_idx];
-                        if (!(fabs(sysStatus.h1_actual_c - prec.h1_setpoint_c) <= prec.temp_tolerance_c &&
-                              fabs(sysStatus.h2_actual_c - prec.h2_setpoint_c) <= prec.temp_tolerance_c)) {
+#if ENABLE_H1
+                        if (fabsf(sysStatus.h1_actual_c - prec.h1_setpoint_c) > prec.temp_tolerance_c) {
                             allowStart = false;
                         }
+#endif
+#if ENABLE_H2
+                        if (fabsf(sysStatus.h2_actual_c - prec.h2_setpoint_c) > prec.temp_tolerance_c) {
+                            allowStart = false;
+                        }
+#endif
                     }
 
-                        if (allowStart) {
+                    if (allowStart) {
                         transitionToState(STATE_SAFETY_CHECK);
                     } else {
-                            // Start blocked by Auto mode: offer force-start confirmation
-                            sysStatus.forceStartPending = true;
-                            sysStatus.forceStartUntilMs = millis() + 8000; // 8s window to confirm
+                        // Start blocked by Auto mode: offer force-start confirmation
+                        sysStatus.forceStartPending = true;
+                        sysStatus.forceStartUntilMs = millis() + 8000; // 8s window to confirm
 #if ENABLE_SERIAL_TFT
-                            vd_popup("Setpoint not reached. Press OK to Force Start or LEFT to Cancel (8s)");
+                        vd_popup("Setpoint not reached. Press OK to Force Start or LEFT to Cancel (8s)");
 #else
-                            Serial.println("[START] Setpoint not reached. Press OK to Force Start or LEFT to Cancel (8s)");
+                        Serial.println("[START] Setpoint not reached. Press OK to Force Start or LEFT to Cancel (8s)");
 #endif
-                        }
+                    }
                 } else if (sysStatus.currentState == STATE_ALARM_FAULT) {
                     transitionToState(STATE_IDLE);
                 }
@@ -310,13 +315,21 @@ void handleButtonInputs() {
 
         case SCREEN_PROGRAM_SELECT:
             if (btnUp) {
-                if (sysStatus.active_program_idx > 0) sysStatus.active_program_idx--;
+                if (sysStatus.active_program_idx > 0) {
+                    sysStatus.active_program_idx--;
+                    saveActiveProgramToNVS(sysStatus.active_program_idx);
+                }
             } else if (btnDown) {
-                if (sysStatus.active_program_idx < 9) sysStatus.active_program_idx++;
+                if (sysStatus.active_program_idx < 9) {
+                    sysStatus.active_program_idx++;
+                    saveActiveProgramToNVS(sysStatus.active_program_idx);
+                }
             } else if (btnRight || btnOk) {
+                saveActiveProgramToNVS(sysStatus.active_program_idx);
                 currentScreen = SCREEN_PROGRAM_EDIT;
                 selectedEditField = 0;
             } else if (btnLeft) {
+                saveActiveProgramToNVS(sysStatus.active_program_idx);
                 currentScreen = SCREEN_HOME;
             }
             break;
@@ -551,114 +564,169 @@ void handleButtonInputs() {
 }
 
 void drawHomeScreen() {
-    tft.fillRect(0, 0, 320, 25, TFT_NAVY);
+    tft.fillRect(0, 0, 320, 24, TFT_NAVY);
     tft.setTextColor(TFT_WHITE, TFT_NAVY);
-    tft.drawString("SUN LAZER - HOME", 10, 5, 2);
+    tft.drawString("SUN LAZER - HOME", 10, 4, 2);
 
+    // Row 1: Active Program
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("Active PGM:", 10, 35, 2);
-    tft.drawString(recipes[sysStatus.active_program_idx].name, 120, 35, 2);
-
-#if ENABLE_H1
-    tft.drawString("H1 Set/Act:", 10, 65, 2);
-    tft.drawFloat(recipes[sysStatus.active_program_idx].h1_setpoint_c, 1, 120, 65, 2);
-    tft.drawString("/", 175, 65, 2);
-    tft.drawFloat(sysStatus.h1_actual_c, 1, 190, 65, 2);
-#else
-    tft.drawString("H1: DISABLED", 10, 65, 2);
-#endif
-
-#if ENABLE_H2
-    tft.drawString("H2 Set/Act:", 10, 95, 2);
-    tft.drawFloat(recipes[sysStatus.active_program_idx].h2_setpoint_c, 1, 120, 95, 2);
-    tft.drawString("/", 175, 95, 2);
-    tft.drawFloat(sysStatus.h2_actual_c, 1, 190, 95, 2);
-#else
-    tft.drawString("H2: DISABLED", 10, 95, 2);
-#endif
-
-    tft.drawString("Torque (Nm):", 10, 125, 2);
-    tft.drawFloat(sysStatus.current_torque_nm, 1, 120, 125, 2);
-
-    // Status line: give a human readable process status
-    const char *statusLine = "IDLE";
-    switch (sysStatus.currentState) {
-        case STATE_IDLE: statusLine = "Idle - Awaiting Start (press OK)"; break;
-        case STATE_SAFETY_CHECK: statusLine = "Running safety checks"; break;
-        case STATE_MOVE_DOWN: statusLine = "Moving down to start position"; break;
-        case STATE_DOWN_LIMIT: statusLine = "At down limit - preparing to heat"; break;
-        case STATE_HEAT_TO_SETPOINT: statusLine = "Heating - waiting to reach setpoints"; break;
-        case STATE_TEMPERATURE_READY: statusLine = "Temperature reached - starting timer"; break;
-        case STATE_PROCESS_TIMER: statusLine = "Process running"; break;
-        case STATE_TIMER_COMPLETE: statusLine = "Timer complete - moving up"; break;
-        case STATE_MOVE_UP: statusLine = "Moving up to home"; break;
-        case STATE_HOME_LIMIT: statusLine = "At home - saving record"; break;
-        case STATE_SAVE_RECORD: statusLine = "Saving record"; break;
-        case STATE_PROCESS_COMPLETE: statusLine = "Process complete"; break;
-        case STATE_READY: statusLine = "Ready"; break;
-        case STATE_ALARM_FAULT: statusLine = "ALARM - see message"; break;
-        default: statusLine = "Unknown"; break;
-    }
-
+    tft.drawString("Active PGM:", 10, 30, 2);
     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.drawString("Status:", 10, 155, 2);
+    tft.drawString(recipes[sysStatus.active_program_idx].name, 115, 30, 2);
 
-    // If boot health failed, show the boot error prominently
-    if (!sysStatus.boot_ok) {
-        char buf[64];
-        strncpy(buf, sysStatus.boot_msg, sizeof(buf)-1);
-        buf[sizeof(buf)-1] = '\0';
+    // Row 2: Heater 1 Setpoint / Actual
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+#if ENABLE_H1
+    tft.drawString("H1 Set/Act:", 10, 52, 2);
+    tft.drawFloat(recipes[sysStatus.active_program_idx].h1_setpoint_c, 1, 115, 52, 2);
+    tft.drawString("C /", 168, 52, 2);
+    if (sysStatus.h1_actual_c < -10.0f) {
         tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.drawString("BOOT ERROR:", 80, 155, 2);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString(buf, 10, 175, 2);
+        tft.drawString("FAULT", 198, 52, 2);
     } else {
-        // Normal status
-        // If idle and boot ok, show explicit Ready message
-        if (sysStatus.currentState == STATE_IDLE) {
-            tft.drawString("Ready to start (press OK)", 80, 155, 2);
-        } else {
-            tft.drawString(statusLine, 80, 155, 2);
-        }
+        tft.drawFloat(sysStatus.h1_actual_c, 1, 198, 52, 2);
+        tft.drawString("C", 258, 52, 2);
     }
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+#else
+    tft.drawString("H1: DISABLED", 10, 52, 2);
+#endif
 
-    // Timer display (format mm:ss) updated while PROCESS_TIMER
+    // Row 3: Heater 2 Setpoint / Actual
+#if ENABLE_H2
+    tft.drawString("H2 Set/Act:", 10, 74, 2);
+    tft.drawFloat(recipes[sysStatus.active_program_idx].h2_setpoint_c, 1, 115, 74, 2);
+    tft.drawString("C /", 168, 74, 2);
+    if (sysStatus.h2_actual_c < -10.0f) {
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.drawString("FAULT", 198, 74, 2);
+    } else {
+        tft.drawFloat(sysStatus.h2_actual_c, 1, 198, 74, 2);
+        tft.drawString("C", 258, 74, 2);
+    }
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+#else
+    tft.drawString("H2: DISABLED", 10, 74, 2);
+#endif
+
+    // Row 4: Torque & Timer side-by-side
+    tft.drawString("Torque:", 10, 96, 2);
+    tft.drawFloat(sysStatus.current_torque_nm, 2, 75, 96, 2);
+    tft.drawString("Nm", 130, 96, 2);
+
+    tft.drawString("Timer:", 180, 96, 2);
     if (sysStatus.remaining_time_sec > 0) {
         uint32_t t = sysStatus.remaining_time_sec;
         uint32_t mm = t / 60;
         uint32_t ss = t % 60;
         char tb[16];
         snprintf(tb, sizeof(tb), "%02u:%02u", (unsigned)mm, (unsigned)ss);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString("Timer:", 10, 185, 2);
-        tft.drawString(tb, 80, 185, 4);
+        tft.setTextColor(TFT_GREEN, TFT_BLACK);
+        tft.drawString(tb, 235, 96, 2);
     } else {
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString("Timer:", 10, 185, 2);
-        tft.drawString("--:--", 80, 185, 4);
+        tft.drawString("--:--", 235, 96, 2);
     }
 
+    // Status line lookup
+    const char *statusLine = "IDLE";
+    switch (sysStatus.currentState) {
+        case STATE_IDLE: statusLine = "Idle - Awaiting Start (press OK)"; break;
+        case STATE_SAFETY_CHECK: statusLine = "Running safety checks"; break;
+        case STATE_MOVE_DOWN: statusLine = "Moving down to start position"; break;
+        case STATE_DOWN_LIMIT: statusLine = "At down limit - preparing to heat"; break;
+        case STATE_HEAT_TO_SETPOINT: statusLine = "Heating - waiting for setpoints"; break;
+        case STATE_TEMPERATURE_READY: statusLine = "Temp ready - starting timer"; break;
+        case STATE_PROCESS_TIMER: statusLine = "Process running"; break;
+        case STATE_TIMER_COMPLETE: statusLine = "Timer done - moving up"; break;
+        case STATE_MOVE_UP: statusLine = "Moving up to home"; break;
+        case STATE_HOME_LIMIT: statusLine = "At home - saving record"; break;
+        case STATE_SAVE_RECORD: statusLine = "Saving record"; break;
+        case STATE_PROCESS_COMPLETE: statusLine = "Process complete"; break;
+        case STATE_READY: statusLine = "Ready"; break;
+        case STATE_ALARM_FAULT: statusLine = "ALARM FAULT"; break;
+        default: statusLine = "Unknown"; break;
+    }
+
+    // Row 5 & 6: Dedicated Status / Alarm message area
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.drawString("Status:", 10, 122, 2);
+
+    if (!sysStatus.boot_ok) {
+        // Boot error display
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.drawString("BOOT CHECK FAILED", 75, 122, 2);
+
+        char buf[64];
+        strncpy(buf, sysStatus.boot_msg, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        tft.fillRect(6, 144, 308, 48, TFT_DARKGREY);
+        tft.fillRect(8, 146, 304, 44, TFT_BLACK);
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.drawString("Error Details:", 14, 150, 2);
+        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+        tft.drawString(buf, 14, 170, 2);
+    } else if (sysStatus.currentState == STATE_ALARM_FAULT) {
+        // Alarm trip display
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.drawString("SAFETY TRIP / FAULT", 75, 122, 2);
+
+        char buf[64];
+        strncpy(buf, sysStatus.alarm_msg, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        tft.fillRect(6, 144, 308, 48, TFT_DARKGREY);
+        tft.fillRect(8, 146, 304, 44, TFT_BLACK);
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.drawString("Trip Reason:", 14, 150, 2);
+        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+        tft.drawString(buf, 14, 170, 2);
+    } else {
+        // Normal operating status
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        if (sysStatus.currentState == STATE_IDLE || sysStatus.currentState == STATE_READY) {
+            tft.drawString("Ready (Press OK to start)", 75, 122, 2);
+        } else {
+            tft.drawString(statusLine, 75, 122, 2);
+        }
+
+        // Limit switches and Mode indicators in normal operation
+        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        char limitBuf[64];
+        snprintf(limitBuf, sizeof(limitBuf), "DN Sw: %s | Home Sw: %s",
+                 sysStatus.down_limit_active ? "CLOSED" : "OPEN",
+                 sysStatus.home_limit_active ? "CLOSED" : "OPEN");
+        tft.drawString(limitBuf, 10, 150, 2);
+
+        char modeBuf[64];
+        snprintf(modeBuf, sizeof(modeBuf), "Start Mode: %s | Max Torque: %.2f Nm",
+                 sysStatus.start_mode_auto ? "AUTO" : "MANUAL",
+                 sysStatus.max_torque_nm);
+        tft.drawString(modeBuf, 10, 172, 2);
+    }
+
+    // Row 7: Navigation Prompt
     tft.setTextColor(TFT_CYAN, TFT_BLACK);
     tft.drawString("[OK]: Start | [->]: Program Menu", 10, 210, 2);
 
-    uint16_t bannerColor = (sysStatus.currentState == STATE_ALARM_FAULT) ? TFT_RED : TFT_DARKGREEN;
+    // Row 8: Bottom indicator strip
+    uint16_t bannerColor = (!sysStatus.boot_ok || sysStatus.currentState == STATE_ALARM_FAULT) ? TFT_RED : TFT_DARKGREEN;
     tft.fillRect(0, 235, 320, 5, bannerColor);
 }
 
 void drawProgramSelectScreen() {
-    tft.fillRect(0, 0, 320, 25, TFT_NAVY);
+    tft.fillRect(0, 0, 320, 24, TFT_NAVY);
     tft.setTextColor(TFT_WHITE, TFT_NAVY);
-    tft.drawString("SELECT RECIPE (P01 - P10)", 10, 5, 2);
+    tft.drawString("SELECT RECIPE (P01 - P10)", 10, 4, 2);
 
     const int items = 10;
     const int startX = 20;
     const int tempX = 180;
     const int unitX = 220;
-    const int startY = 35;
-    const int lineH = 20; // tighter spacing to fit 10 lines
+    const int startY = 32;
+    const int lineH = 17; // compact spacing to fit all 10 lines comfortably above footer
 
     // clear the list area
-    tft.fillRect(0, startY - 5, 320, items * lineH + 10, TFT_BLACK);
+    tft.fillRect(0, startY - 2, 320, items * lineH + 4, TFT_BLACK);
 
     for (int i = 0; i < items; i++) {
         uint8_t idx = i;
@@ -953,14 +1021,18 @@ void updateTFTDisplay() {
             }
         }
     }
+
+    // Ensure TFT chip-select is explicitly de-asserted (HIGH) so other SPI devices can access the bus cleanly
+    safeDigitalWrite(PIN_TFT_CS, HIGH);
 }
 
-#if ENABLE_APP_REMOTE
 static void sendCorsHeaders() {
     webServer.sendHeader("Access-Control-Allow-Origin", "*");
     webServer.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
+
+#if ENABLE_APP_REMOTE
 
 static const char* getScreenName(UIScreen_t screen) {
     switch (screen) {
@@ -1110,14 +1182,20 @@ static void handleApiControl() {
     sendCorsHeaders();
     String action = webServer.arg("action");
     if (action.equalsIgnoreCase("start")) {
-        if (sysStatus.currentState == STATE_IDLE) {
+        if (sysStatus.currentState == STATE_IDLE || sysStatus.currentState == STATE_READY) {
             bool allowStart = true;
             if (sysStatus.start_mode_auto) {
                 ProgramRecipe_t &prec = recipes[sysStatus.active_program_idx];
-                if (!(fabs(sysStatus.h1_actual_c - prec.h1_setpoint_c) <= prec.temp_tolerance_c &&
-                      fabs(sysStatus.h2_actual_c - prec.h2_setpoint_c) <= prec.temp_tolerance_c)) {
+#if ENABLE_H1
+                if (fabsf(sysStatus.h1_actual_c - prec.h1_setpoint_c) > prec.temp_tolerance_c) {
                     allowStart = false;
                 }
+#endif
+#if ENABLE_H2
+                if (fabsf(sysStatus.h2_actual_c - prec.h2_setpoint_c) > prec.temp_tolerance_c) {
+                    allowStart = false;
+                }
+#endif
             }
             if (allowStart) {
                 transitionToState(STATE_SAFETY_CHECK);
@@ -1129,11 +1207,11 @@ static void handleApiControl() {
             }
             return;
         } else {
-            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"System not in IDLE state\"}");
+            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"System not in IDLE or READY state\"}");
             return;
         }
     } else if (action.equalsIgnoreCase("force_start")) {
-        if (sysStatus.forceStartPending || sysStatus.currentState == STATE_IDLE) {
+        if (sysStatus.forceStartPending || sysStatus.currentState == STATE_IDLE || sysStatus.currentState == STATE_READY) {
             sysStatus.forceStartPending = false;
             sysStatus.forceStartUntilMs = 0;
             transitionToState(STATE_SAFETY_CHECK);
@@ -1172,6 +1250,7 @@ static void handleApiControl() {
             int idx = webServer.arg("idx").toInt();
             if (idx >= 0 && idx < 10) {
                 sysStatus.active_program_idx = idx;
+                saveActiveProgramToNVS(idx);
                 webServer.send(200, "application/json", "{\"status\":\"ok\",\"active_program_idx\":" + String(idx) + "}");
                 return;
             }
@@ -1269,6 +1348,29 @@ void setupWebServer() {
 #if ENABLE_APP_REMOTE
     setupAppRemoteEndpoints();
 #endif
+
+    // Catch-all handler for CORS OPTIONS preflight, captive portal checks, and 404s
+    webServer.onNotFound([]() {
+        sendCorsHeaders();
+        String uri = webServer.uri();
+        HTTPMethod method = webServer.method();
+        // CORS preflight requests
+        if (method == HTTP_OPTIONS) {
+            webServer.send(204);
+            return;
+        }
+        // Android & iOS captive portal / connectivity probes
+        if (uri == "/generate_204" || uri == "/gen_204" || uri == "/connectivity-check.html" ||
+            uri == "/ncsi.txt" || uri == "/hotspot-detect.html" || uri == "/favicon.ico") {
+            webServer.send(204);
+            return;
+        }
+        if (uri.startsWith("/api/")) {
+            webServer.send(404, "application/json", "{\"status\":\"error\",\"message\":\"Not found: " + uri + "\"}");
+        } else {
+            webServer.send(404, "text/plain", "Not found: " + uri);
+        }
+    });
 
     webServer.begin();
 }

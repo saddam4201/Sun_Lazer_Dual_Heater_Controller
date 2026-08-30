@@ -12,6 +12,10 @@ void saveAllRecipesToNVS();
 void saveStartModeToNVS(bool autoMode);
 bool loadStartModeFromNVS(bool *autoMode);
 
+// Active program persistence
+void saveActiveProgramToNVS(uint8_t index);
+bool loadActiveProgramFromNVS(uint8_t *index);
+
 void logToSD(const char* logEntry);
 
 // Recent logs in RAM

@@ -5,9 +5,11 @@
 #include <math.h>
 #include "config.h"
 #include "rtc.h"
+#include "display_ui.h"
 
 void vd_init() {
     Serial.println("[VIRT_TFT] Serial virtual display initialized");
+    Serial.println("[VIRT_TFT] Button Mapping: 1=UP, 2=DOWN, 3=LEFT (<-), 4=RIGHT (->), 5=OK");
 }
 
 void vd_drawHomeScreen() {
@@ -22,8 +24,11 @@ void vd_drawHomeScreen() {
     static char last_boot_msg[128] = "";
     static bool last_force_pending = false;
     static uint32_t last_force_remaining = 0xFFFFFFFF;
+    static UIScreen_t last_screen = (UIScreen_t)0xFF;
 
     bool changed = false;
+
+    if (currentScreen != last_screen) changed = true;
 
     // Program change
     if (sysStatus.active_program_idx != last_prog_idx) {
@@ -71,8 +76,8 @@ void vd_drawHomeScreen() {
     if (!changed) return; // nothing changed since last draw
 
     // Print full snapshot when anything changed
-    Serial.println("[VIRT_TFT] === HOME SNAPSHOT ===");
-    Serial.printf("Program: %s\n", recipes[sysStatus.active_program_idx].name);
+    Serial.println("[VIRT_TFT] === HOME SCREEN ===");
+    Serial.printf("Program: %s (P%02d)\n", recipes[sysStatus.active_program_idx].name, sysStatus.active_program_idx + 1);
 #if ENABLE_H1
     Serial.printf("H1 Set/Act: %.1f / %.1f C\n", recipes[sysStatus.active_program_idx].h1_setpoint_c, sysStatus.h1_actual_c);
 #else
@@ -95,7 +100,10 @@ void vd_drawHomeScreen() {
     }
 
     // Status
-    Serial.printf("State: %s\n", stateNames[sysStatus.currentState]);
+    Serial.printf("State: %s | Mode: %s\n", stateNames[sysStatus.currentState], sysStatus.start_mode_auto ? "AUTO" : "MANUAL");
+    Serial.printf("Switches: Down Sw: %s | Home Sw: %s\n",
+                  sysStatus.down_limit_active ? "CLOSED" : "OPEN",
+                  sysStatus.home_limit_active ? "CLOSED" : "OPEN");
     if (sysStatus.currentState == STATE_ALARM_FAULT) Serial.printf("ALARM: %s\n", sysStatus.alarm_msg);
 
     // Boot status
@@ -105,13 +113,15 @@ void vd_drawHomeScreen() {
 
     // Force-start pending
     if (sysStatus.forceStartPending) {
-        Serial.printf("FORCE START PENDING: confirm with OK or cancel with LEFT (%us)\n", (unsigned)force_remaining);
-        Serial.printf("[VIRT_TFT] FORCE START PENDING: Press 5 (OK) to confirm or 3 (LEFT) to cancel (%us)\n", (unsigned)force_remaining);
+        Serial.printf("[VIRT_TFT] FORCE START PENDING (%us): Press [5/OK] to Force Start or [3/<-] to Cancel\n", (unsigned)force_remaining);
+    } else {
+        Serial.println("[VIRT_TFT] Nav: [5/OK]: Start Process | [4/->]: Program Menu | [3/<-]: Service Diagnostics");
     }
 
     Serial.println("[VIRT_TFT] ====================");
 
     // Update last snapshot
+    last_screen = currentScreen;
     last_prog_idx = sysStatus.active_program_idx;
 #if ENABLE_H1
     last_h1_set = recipes[sysStatus.active_program_idx].h1_setpoint_c;
@@ -138,60 +148,150 @@ void vd_drawHomeScreen() {
     last_force_remaining = force_remaining;
 }
 
-
 void vd_drawProgramSelectScreen() {
+    static int last_prog_idx = -1;
+    static UIScreen_t last_screen = (UIScreen_t)0xFF;
+    if (currentScreen == last_screen && sysStatus.active_program_idx == last_prog_idx) return;
+    last_prog_idx = sysStatus.active_program_idx;
+    last_screen = currentScreen;
+
     Serial.println("[VIRT_TFT] === PROGRAM SELECT ===");
-    for (int i=0;i<10;i++) {
-        Serial.printf("P%02d: %s - H1 %.1f C\n", i+1, recipes[i].name, recipes[i].h1_setpoint_c);
+    for (int i = 0; i < 10; i++) {
+        const char *cursor = (sysStatus.active_program_idx == i) ? "-> " : "   ";
+        Serial.printf("%sP%02d: %-16s | H1: %.1f C | H2: %.1f C | Time: %us\n",
+                      cursor, i + 1, recipes[i].name, recipes[i].h1_setpoint_c, recipes[i].h2_setpoint_c, (unsigned)recipes[i].process_time_sec);
     }
-    Serial.printf("Active program: P%02d\n", sysStatus.active_program_idx+1);
+    Serial.printf("Active program: P%02d (%s)\n", sysStatus.active_program_idx + 1, recipes[sysStatus.active_program_idx].name);
+    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Select Recipe | [5/OK, 4/->]: Edit Recipe | [3/<-]: Back to Home");
     Serial.println("[VIRT_TFT] ====================");
 }
 
 void vd_drawProgramEditScreen() {
-    Serial.println("[VIRT_TFT] === PROGRAM EDIT ===");
+    static int last_prog_idx = -1;
+    static float last_h1 = NAN, last_h2 = NAN, last_torque = NAN;
+    static uint32_t last_time = 0xFFFFFFFF;
+    static UIScreen_t last_screen = (UIScreen_t)0xFF;
+
     ProgramRecipe_t &rec = recipes[sysStatus.active_program_idx];
-    Serial.printf("Name: %s\n", rec.name);
-    Serial.printf("H1 Set: %.1f C\n", rec.h1_setpoint_c);
-    Serial.printf("H2 Set: %.1f C\n", rec.h2_setpoint_c);
-    Serial.printf("Time (s): %u\n", (unsigned)rec.process_time_sec);
-    Serial.printf("Torque limit: %.2f Nm\n", rec.torque_limit_nm);
+    bool changed = (currentScreen != last_screen) ||
+                   (sysStatus.active_program_idx != last_prog_idx) ||
+                   (rec.h1_setpoint_c != last_h1) ||
+                   (rec.h2_setpoint_c != last_h2) ||
+                   (rec.process_time_sec != last_time) ||
+                   (rec.torque_limit_nm != last_torque);
+
+    if (!changed) return;
+    last_screen = currentScreen;
+    last_prog_idx = sysStatus.active_program_idx;
+    last_h1 = rec.h1_setpoint_c;
+    last_h2 = rec.h2_setpoint_c;
+    last_time = rec.process_time_sec;
+    last_torque = rec.torque_limit_nm;
+
+    Serial.printf("[VIRT_TFT] === PROGRAM EDIT (P%02d: %s) ===\n", sysStatus.active_program_idx + 1, rec.name);
+    Serial.printf("  H1 Target Temp : %.1f C\n", rec.h1_setpoint_c);
+    Serial.printf("  H2 Target Temp : %.1f C\n", rec.h2_setpoint_c);
+    Serial.printf("  Process Time   : %u s\n", (unsigned)rec.process_time_sec);
+    Serial.printf("  Torque Limit   : %.2f Nm\n", rec.torque_limit_nm);
+    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Change Value | [4/->]: Next Field | [5/OK]: Save Recipe | [3/<-]: Back");
     Serial.println("[VIRT_TFT] ====================");
 }
 
 void vd_drawTimerEditor() {
-    Serial.println("[VIRT_TFT] === TIMER EDIT ===");
+    static uint32_t last_time = 0xFFFFFFFF;
+    static int last_prog = -1;
+    static UIScreen_t last_screen = (UIScreen_t)0xFF;
+
     uint32_t t = recipes[sysStatus.active_program_idx].process_time_sec;
-    uint32_t h = t/3600;
-    uint32_t m = (t%3600)/60;
-    uint32_t s = t%60;
-    Serial.printf("Program P%02d time: %02u:%02u:%02u (HH:MM:SS)\n", sysStatus.active_program_idx+1, (unsigned)h, (unsigned)m, (unsigned)s);
+    if (currentScreen == last_screen && t == last_time && sysStatus.active_program_idx == last_prog) return;
+    last_screen = currentScreen;
+    last_time = t;
+    last_prog = sysStatus.active_program_idx;
+
+    uint32_t h = t / 3600;
+    uint32_t m = (t % 3600) / 60;
+    uint32_t s = t % 60;
+    Serial.printf("[VIRT_TFT] === TIMER EDIT (P%02d: %s) ===\n", sysStatus.active_program_idx + 1, recipes[sysStatus.active_program_idx].name);
+    Serial.printf("  Process Time: %02u:%02u:%02u (HH:MM:SS) [%u total seconds]\n", (unsigned)h, (unsigned)m, (unsigned)s, (unsigned)t);
+    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Change | [4/->]: Next (HH->MM->SS) | [5/OK]: Save | [3/<-]: Cancel");
     Serial.println("[VIRT_TFT] ====================");
 }
 
 void vd_drawServiceScreen() {
-    Serial.println("[VIRT_TFT] === SERVICE ===");
-    Serial.printf("Down limit: %s, Home limit: %s\n", sysStatus.down_limit_active?"ACTIVE":"OPEN", sysStatus.home_limit_active?"ACTIVE":"OPEN");
-    Serial.printf("DN Failures: %u, HOME Failures: %u\n", (unsigned)sysStatus.down_limit_fail_count, (unsigned)sysStatus.home_limit_fail_count);
-    Serial.printf("Torque now/max: %.2f / %.2f Nm\n", sysStatus.current_torque_nm, sysStatus.max_torque_nm);
-    Serial.println("[VIRT_TFT] Press 4+2 (DN+RIGHT) to reset failure counters");
+    static bool last_down = false, last_home = false, last_auto = false;
+    static uint32_t last_dn_fail = 0xFFFFFFFF, last_hm_fail = 0xFFFFFFFF;
+    static float last_torque = NAN, last_max_torque = NAN;
+    static UIScreen_t last_screen = (UIScreen_t)0xFF;
+
+    bool changed = (currentScreen != last_screen) ||
+                   (sysStatus.down_limit_active != last_down) ||
+                   (sysStatus.home_limit_active != last_home) ||
+                   (sysStatus.start_mode_auto != last_auto) ||
+                   (sysStatus.down_limit_fail_count != last_dn_fail) ||
+                   (sysStatus.home_limit_fail_count != last_hm_fail) ||
+                   (fabsf(sysStatus.current_torque_nm - last_torque) > 0.05f) ||
+                   (fabsf(sysStatus.max_torque_nm - last_max_torque) > 0.05f);
+
+    if (!changed) return;
+    last_screen = currentScreen;
+    last_down = sysStatus.down_limit_active;
+    last_home = sysStatus.home_limit_active;
+    last_auto = sysStatus.start_mode_auto;
+    last_dn_fail = sysStatus.down_limit_fail_count;
+    last_hm_fail = sysStatus.home_limit_fail_count;
+    last_torque = sysStatus.current_torque_nm;
+    last_max_torque = sysStatus.max_torque_nm;
+
+    Serial.println("[VIRT_TFT] === SERVICE DIAGNOSTICS ===");
+    Serial.printf("  Down Limit Sw : %s | Home Limit Sw : %s\n",
+                  sysStatus.down_limit_active ? "ACTIVE" : "OPEN",
+                  sysStatus.home_limit_active ? "ACTIVE" : "OPEN");
+    Serial.printf("  Limit Failures: DN Fail: %u | HM Fail: %u\n",
+                  (unsigned)sysStatus.down_limit_fail_count, (unsigned)sysStatus.home_limit_fail_count);
+    Serial.printf("  Torque Sensor : Now: %.2f Nm | Max: %.2f Nm\n",
+                  sysStatus.current_torque_nm, sysStatus.max_torque_nm);
+    Serial.printf("  Start Mode    : %s\n", sysStatus.start_mode_auto ? "AUTO" : "MANUAL");
+    Serial.println("[VIRT_TFT] Actions: [5/OK]: Heater Test | [1/UP]: Motor Jog UP | [4/->]: Motor Jog DN | [2/DN]: Toggle Mode");
+    Serial.println("[VIRT_TFT] Combos : [4+5/->+OK]: PID Tuning | [2+5/DN+OK]: Set RTC | [2+4/DN+->]: Reset Fails | [3+5/<-+OK]: Save Defaults");
+    Serial.println("[VIRT_TFT] Nav    : [3/<-]: Back to Home");
     Serial.println("[VIRT_TFT] ====================");
 }
 
 void vd_drawPIDTuningScreen() {
-    Serial.println("[VIRT_TFT] === PID TUNING ===");
+    static int last_prog = -1;
+    static float last_h1_kp = NAN, last_h1_ki = NAN, last_h1_kd = NAN;
+    static float last_h2_kp = NAN, last_h2_ki = NAN, last_h2_kd = NAN;
+    static UIScreen_t last_screen = (UIScreen_t)0xFF;
+
     ProgramRecipe_t &rec = recipes[sysStatus.active_program_idx];
-    Serial.printf("H1 Kp/Ki/Kd: %.2f / %.2f / %.2f\n", rec.h1_Kp, rec.h1_Ki, rec.h1_Kd);
-    Serial.printf("H2 Kp/Ki/Kd: %.2f / %.2f / %.2f\n", rec.h2_Kp, rec.h2_Ki, rec.h2_Kd);
+    bool changed = (currentScreen != last_screen) ||
+                   (sysStatus.active_program_idx != last_prog) ||
+                   (rec.h1_Kp != last_h1_kp) || (rec.h1_Ki != last_h1_ki) || (rec.h1_Kd != last_h1_kd) ||
+                   (rec.h2_Kp != last_h2_kp) || (rec.h2_Ki != last_h2_ki) || (rec.h2_Kd != last_h2_kd);
+
+    if (!changed) return;
+    last_screen = currentScreen;
+    last_prog = sysStatus.active_program_idx;
+    last_h1_kp = rec.h1_Kp; last_h1_ki = rec.h1_Ki; last_h1_kd = rec.h1_Kd;
+    last_h2_kp = rec.h2_Kp; last_h2_ki = rec.h2_Ki; last_h2_kd = rec.h2_Kd;
+
+    Serial.printf("[VIRT_TFT] === PID TUNING (P%02d: %s) ===\n", sysStatus.active_program_idx + 1, rec.name);
+    Serial.printf("  H1 PID: Kp=%.2f, Ki=%.3f, Kd=%.2f\n", rec.h1_Kp, rec.h1_Ki, rec.h1_Kd);
+    Serial.printf("  H2 PID: Kp=%.2f, Ki=%.3f, Kd=%.2f\n", rec.h2_Kp, rec.h2_Ki, rec.h2_Kd);
+    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Change Value | [4/->]: Next Field | [5/OK]: Save | [3/<-]: Back to Service");
     Serial.println("[VIRT_TFT] ====================");
 }
 
 void vd_drawRTCSetScreen() {
-    Serial.println("[VIRT_TFT] === RTC SET (virtual) ===");
-    // show current system build time as fallback
+    static UIScreen_t last_screen = (UIScreen_t)0xFF;
+    if (currentScreen == last_screen) return;
+    last_screen = currentScreen;
+
     char buf[64];
     getTimestampForLog(buf, sizeof(buf));
-    Serial.printf("Current time: %s\n", buf);
+    Serial.println("[VIRT_TFT] === RTC SETTINGS ===");
+    Serial.printf("  Current System Time: %s\n", buf);
+    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Change Value | [4/->]: Next Field | [5/OK]: Save RTC | [3/<-]: Cancel");
     Serial.println("[VIRT_TFT] ====================");
 }
 

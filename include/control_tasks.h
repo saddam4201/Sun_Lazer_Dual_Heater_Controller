@@ -5,6 +5,7 @@
 
 void transitionToState(ProcessState_t newState);
 void triggerSafetyShutdown(const char* reason);
+float readPT100Temperature(Adafruit_MAX31865 &maxSensor, uint8_t &faultCode);
 
 // FreeRTOS Task Prototypes
 void Task_SafetyAndControl(void *pvParameters); // Core 1 (10ms)
