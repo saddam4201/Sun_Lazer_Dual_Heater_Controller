@@ -262,6 +262,9 @@ struct SystemStatus_t {
   // Start mode (auto/manual)
   bool start_mode_auto;
 
+  // SD card presence
+  bool sd_present;
+
   // Limit switch failure tracking
   uint32_t
       down_limit_fail_count; // number of times down limit failed to activate

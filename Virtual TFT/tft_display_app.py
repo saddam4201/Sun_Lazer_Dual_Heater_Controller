@@ -953,60 +953,78 @@ class VirtualTFTApp(tk.Tk):
             self.cmd_queue.put("CLS,0x0000")
             time.sleep(0.05)
 
-            # Header Bar
-            self.cmd_queue.put("RECT,0,0,320,25,0x0841,1")
-            self.cmd_queue.put("LINE,0,25,320,25,0x03EF")
-            self.cmd_queue.put("TXT,10,4,2,0x07FF,0x0841,SUN LAZER")
-            self.cmd_queue.put("TXT,140,4,2,0xFFE0,0x0841,P01: Standard Seal")
+            # Mobile Style Top Header (y = 0..40, h = 40)
+            self.cmd_queue.put("RECT,0,0,320,40,0x0841,1")
+            self.cmd_queue.put("LINE,0,40,320,40,0x03EF")
+            # Row 1: RTC Time + Badges (y = 0..16)
+            self.cmd_queue.put("TXT,10,2,2,0xFFFF,0x0841,12:00:00")
+            self.cmd_queue.put("TXT,210,2,2,0x07FF,0x0841,WiFi")
+            self.cmd_queue.put("TXT,246,2,2,0x07E0,0x0841,SD")
+            self.cmd_queue.put("TXT,274,2,2,0x07E0,0x0841,AUTO")
+            # Row 2: Sun Smart + Program Name (y = 16..39)
+            self.cmd_queue.put("TXT,10,20,2,0x07FF,0x0841,Sun Smart")
+            self.cmd_queue.put("TXT,170,20,2,0xFFE0,0x0841,Standard Seal")
 
-            # Status Banner
-            self.cmd_queue.put("RRECT,6,28,308,21,3,0x03E0,0")
-            self.cmd_queue.put("TXT,14,30,2,0x07E0,0x0000,READY - PRESS [OK] TO START")
+            # Status Banner (y = 43..63, h = 20)
+            self.cmd_queue.put("RRECT,6,43,308,20,3,0x03E0,0")
+            self.cmd_queue.put("TXT,14,45,2,0x07E0,0x0000,READY (AUTO) - PRESS [START]")
 
             # 4 Modern Cards (Outlines & Titles)
-            self.cmd_queue.put("RRECT,6,52,150,72,4,0x4A69,0")
-            self.cmd_queue.put("TXT,14,56,2,0x07FF,0x0000,HEATER 1")
-            self.cmd_queue.put("TXT,14,102,2,0xC618,0x0000,SET: 50.0 C")
+            # Card 1: Heater 1 (y = 66..131, h = 65)
+            self.cmd_queue.put("RRECT,6,66,150,65,4,0x4A69,0")
+            self.cmd_queue.put("TXT,14,69,2,0x07FF,0x0000,HEATER 1")
+            self.cmd_queue.put("TXT,14,111,2,0xC618,0x0000,SET: 50.0 C")
 
-            self.cmd_queue.put("RRECT,164,52,150,72,4,0x4A69,0")
-            self.cmd_queue.put("TXT,172,56,2,0x07FF,0x0000,HEATER 2")
-            self.cmd_queue.put("TXT,172,102,2,0xC618,0x0000,SET: 50.0 C")
+            # Card 2: Heater 2 (y = 66..131, h = 65)
+            self.cmd_queue.put("RRECT,164,66,150,65,4,0x4A69,0")
+            self.cmd_queue.put("TXT,172,69,2,0x07FF,0x0000,HEATER 2")
+            self.cmd_queue.put("TXT,172,111,2,0xC618,0x0000,SET: 50.0 C")
 
-            self.cmd_queue.put("RRECT,6,128,150,72,4,0x4A69,0")
-            self.cmd_queue.put("TXT,14,132,2,0xFFE0,0x0000,TORQUE")
-            self.cmd_queue.put("TXT,14,178,2,0xC618,0x0000,LIMIT: 3.50 Nm")
+            # Card 3: Torque (y = 135..200, h = 65)
+            self.cmd_queue.put("RRECT,6,135,150,65,4,0x4A69,0")
+            self.cmd_queue.put("TXT,14,138,2,0xFFE0,0x0000,TORQUE")
+            self.cmd_queue.put("TXT,14,180,2,0xC618,0x0000,UNIT: Nm")
 
-            self.cmd_queue.put("RRECT,164,128,150,72,4,0x4A69,0")
-            self.cmd_queue.put("TXT,172,132,2,0x07E0,0x0000,TIMER")
-            self.cmd_queue.put("TXT,172,178,2,0xC618,0x0000,TOTAL: 150s")
+            # Card 4: Timer (y = 135..200, h = 65)
+            self.cmd_queue.put("RRECT,164,135,150,65,4,0x4A69,0")
+            self.cmd_queue.put("TXT,172,138,2,0x07E0,0x0000,TIMER")
+            self.cmd_queue.put("TXT,172,180,2,0xC618,0x0000,TOTAL: 150s")
 
-            # Footer
+            # Footer (y = 204..240)
             self.cmd_queue.put("RECT,0,204,320,32,0x0841,1")
             self.cmd_queue.put("LINE,0,204,320,204,0x03EF")
-            self.cmd_queue.put("TXT,10,212,2,0xFFFF,0x0841,[START]: Run (1s)")
+            self.cmd_queue.put("TXT,10,212,2,0xFFFF,0x0841,[START]: Run")
             self.cmd_queue.put("TXT,205,212,2,0xFFFF,0x0841,[->]: Menu")
             self.cmd_queue.put("RECT,0,236,320,4,0x03E0,1")
 
             t = 0.0
             timer_sec = 150
+            clock_sec = 12 * 3600
             while not self.sim_stop_event.is_set():
                 h1_act = 149.2 + 1.2 * math.sin(t * 0.8)
                 h2_act = 150.1 + 0.9 * math.cos(t * 0.7)
                 torque = max(0.0, 1.45 + 0.35 * math.sin(t * 1.2))
 
                 # Medium font (size 4) updates in-place
-                self.cmd_queue.put(f"TXT,14,73,4,0xFFFF,0x0000,{h1_act:.1f}")
-                self.cmd_queue.put("TXT,105,74,2,0xFFFF,0x0000,C")
+                self.cmd_queue.put(f"TXT,14,85,4,0xFFFF,0x0000,{h1_act:.1f}")
+                self.cmd_queue.put("TXT,105,86,2,0xFFFF,0x0000,C")
 
-                self.cmd_queue.put(f"TXT,172,73,4,0xFFFF,0x0000,{h2_act:.1f}")
-                self.cmd_queue.put("TXT,265,74,2,0xFFFF,0x0000,C")
+                self.cmd_queue.put(f"TXT,172,85,4,0xFFFF,0x0000,{h2_act:.1f}")
+                self.cmd_queue.put("TXT,265,86,2,0xFFFF,0x0000,C")
 
-                self.cmd_queue.put(f"TXT,14,149,4,0xFFFF,0x0000,{torque:.2f}")
-                self.cmd_queue.put("TXT,105,150,2,0xFFFF,0x0000,Nm")
+                self.cmd_queue.put(f"TXT,14,154,4,0xFFFF,0x0000,{torque:.2f}")
+                self.cmd_queue.put("TXT,105,155,2,0xFFFF,0x0000,Nm")
 
                 mm = timer_sec // 60
                 ss = timer_sec % 60
-                self.cmd_queue.put(f"TXT,172,149,4,0x07E0,0x0000,{mm:02d}:{ss:02d}")
+                self.cmd_queue.put(f"TXT,172,154,4,0x07E0,0x0000,{mm:02d}:{ss:02d}")
+
+                # Live RTC Clock
+                cur_clock = (clock_sec + int(t)) % 86400
+                ch = cur_clock // 3600
+                cm = (cur_clock // 60) % 60
+                cs = cur_clock % 60
+                self.cmd_queue.put(f"TXT,10,2,2,0xFFFF,0x0841,{ch:02d}:{cm:02d}:{cs:02d}")
 
                 t += 0.2
                 if int(t * 5) % 5 == 0 and timer_sec > 0:

@@ -242,6 +242,7 @@ void setup() {
     sysStatus.currentState = STATE_IDLE;
     sysStatus.h1_actual_c = 25.0f; // Room temp default on bench
     sysStatus.h2_actual_c = 25.0f;
+    sysStatus.sd_present = sd_ok;
     
     // Load last selected active program from NVS (default: 0)
     uint8_t savedProg = 0;
