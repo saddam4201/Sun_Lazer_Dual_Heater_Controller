@@ -23,6 +23,7 @@ public:
           _curTextColor(TFT_WHITE),
           _curTextBgColor(TFT_BLACK),
           _curTextSize(1),
+          _curFreeFont(NULL),
           _rotation(1),
           _inHighLevelText(false) {}
 
@@ -237,6 +238,33 @@ public:
 #endif
     }
 
+    void setFreeFont(const GFXfont *f = NULL) {
+        _curFreeFont = (GFXfont *)f;
+#if ENABLE_PHYSICAL_TFT
+        if (_physical_enabled) {
+            TFT_eSPI::setFreeFont(f);
+        }
+#endif
+    }
+
+    void setTextFont(uint8_t font) {
+        _curFreeFont = NULL;
+#if ENABLE_PHYSICAL_TFT
+        if (_physical_enabled) {
+            TFT_eSPI::setTextFont(font);
+        }
+#endif
+    }
+
+    uint8_t getEffectiveFontSize() const {
+        if (_curFreeFont) {
+            if (_curFreeFont == &FreeSansBold18pt7b) return 4;
+            if (_curFreeFont == &FreeSansBold12pt7b) return 3;
+            return 2; // Default for FreeSansBold9pt7b
+        }
+        return max((uint8_t)1, _curTextSize);
+    }
+
     void setTextPadding(uint16_t pad) {
 #if ENABLE_PHYSICAL_TFT
         if (_physical_enabled) {
@@ -266,11 +294,23 @@ public:
     }
 
     int16_t drawString(const char *string, int32_t poX, int32_t poY) {
-        return drawString(string, poX, poY, 2);
+#if ENABLE_PHYSICAL_TFT
+        if (_physical_enabled) {
+            _inHighLevelText = true;
+            TFT_eSPI::drawString(string, poX, poY);
+            _inHighLevelText = false;
+        }
+#endif
+#if ENABLE_UART_VIRTUAL_TFT
+        if (_uart_enabled && _uartStream && string) {
+            sendUartText(string, poX, poY, getEffectiveFontSize());
+        }
+#endif
+        return 0;
     }
 
     int16_t drawString(const String &string, int32_t poX, int32_t poY) {
-        return drawString(string.c_str(), poX, poY, 2);
+        return drawString(string.c_str(), poX, poY);
     }
 
     int16_t drawFloat(float floatNumber, uint8_t decimal, int32_t poX, int32_t poY, uint8_t font) {
@@ -292,7 +332,21 @@ public:
     }
 
     int16_t drawFloat(float floatNumber, uint8_t decimal, int32_t poX, int32_t poY) {
-        return drawFloat(floatNumber, decimal, poX, poY, 2);
+#if ENABLE_PHYSICAL_TFT
+        if (_physical_enabled) {
+            _inHighLevelText = true;
+            TFT_eSPI::drawFloat(floatNumber, decimal, poX, poY);
+            _inHighLevelText = false;
+        }
+#endif
+#if ENABLE_UART_VIRTUAL_TFT
+        if (_uart_enabled && _uartStream) {
+            char buf[32];
+            dtostrf(floatNumber, 0, decimal, buf);
+            sendUartText(buf, poX, poY, getEffectiveFontSize());
+        }
+#endif
+        return 0;
     }
 
     int16_t drawNumber(long long_num, int32_t poX, int32_t poY, uint8_t font) {
@@ -314,7 +368,21 @@ public:
     }
 
     int16_t drawNumber(long long_num, int32_t poX, int32_t poY) {
-        return drawNumber(long_num, poX, poY, 2);
+#if ENABLE_PHYSICAL_TFT
+        if (_physical_enabled) {
+            _inHighLevelText = true;
+            TFT_eSPI::drawNumber(long_num, poX, poY);
+            _inHighLevelText = false;
+        }
+#endif
+#if ENABLE_UART_VIRTUAL_TFT
+        if (_uart_enabled && _uartStream) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%ld", long_num);
+            sendUartText(buf, poX, poY, getEffectiveFontSize());
+        }
+#endif
+        return 0;
     }
 
     int16_t drawCentreString(const char *string, int32_t dX, int32_t poY, uint8_t font) {
@@ -327,7 +395,6 @@ public:
 #endif
 #if ENABLE_UART_VIRTUAL_TFT
         if (_uart_enabled && _uartStream && string) {
-            // Estimate center X based on font width
             int charW = (font >= 4) ? 14 : ((font >= 2) ? 8 : 6);
             int len = strlen(string);
             int poX = dX - (len * charW) / 2;
@@ -365,6 +432,7 @@ private:
     uint16_t _curTextColor;
     uint16_t _curTextBgColor;
     uint8_t  _curTextSize;
+    GFXfont* _curFreeFont;
     uint8_t  _rotation;
     bool     _inHighLevelText;
 
@@ -373,7 +441,8 @@ private:
 
         uint8_t sz = 1;
         if (font >= 4) sz = 4;
-        else if (font >= 2) sz = 2;
+        else if (font == 3) sz = 3;
+        else if (font == 2) sz = 2;
         else sz = max((uint8_t)1, _curTextSize);
 
         _uartStream->print(F("TXT,"));
