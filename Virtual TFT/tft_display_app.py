@@ -780,6 +780,7 @@ class VirtualTFTApp(tk.Tk):
                     self.tft_canvas.create_rectangle(x0, ry1, x0 + self.scale, ry2, fill=color, outline=color)
                 else:
                     self.tft_canvas.create_line(x0, y0, x1, y1, fill=color, width=self.scale)
+                self.tft_canvas.tag_raise("text_layer")
 
             elif cmd == "RECT":
                 # Rect: RECT,x,y,w,h,color,fill
@@ -792,14 +793,15 @@ class VirtualTFTApp(tk.Tk):
                 rect_tag = f"rect_{x}_{y}_{w}_{h}"
                 existing_rect = self.tft_canvas.find_withtag(rect_tag)
                 if existing_rect:
-                    self.tft_canvas.itemconfigure(existing_rect[0], fill=color if is_fill else "", outline=color if is_fill else color)
+                    self.tft_canvas.itemconfigure(existing_rect[0], fill=color if is_fill else "", outline="" if is_fill else color)
                 else:
                     if is_fill:
                         for item in self.tft_canvas.find_enclosed(x - 1, y - 1, x + w + 1, y + h + 1):
                             self.tft_canvas.delete(item)
-                        self.tft_canvas.create_rectangle(x, y, x + w, y + h, fill=color, outline=color, tags=rect_tag)
+                        self.tft_canvas.create_rectangle(x, y, x + w, y + h, fill=color, outline="", tags=("bg_layer", rect_tag))
                     else:
-                        self.tft_canvas.create_rectangle(x, y, x + w, y + h, fill="", outline=color, width=self.scale, tags=rect_tag)
+                        self.tft_canvas.create_rectangle(x, y, x + w, y + h, fill="", outline=color, width=self.scale, tags=("border_layer", rect_tag))
+                self.tft_canvas.tag_raise("text_layer")
 
             elif cmd == "RRECT":
                 # Rounded Rect: RRECT,x,y,w,h,r,color,fill
@@ -813,14 +815,15 @@ class VirtualTFTApp(tk.Tk):
                 rrect_tag = f"rrect_{x}_{y}_{w}_{h}"
                 existing_rrect = self.tft_canvas.find_withtag(rrect_tag)
                 if existing_rrect:
-                    self.tft_canvas.itemconfigure(existing_rrect[0], fill=color if is_fill else "", outline=color if is_fill else color)
+                    self.tft_canvas.itemconfigure(existing_rrect[0], fill=color if is_fill else "", outline="" if is_fill else color)
                 else:
                     if is_fill:
                         for item in self.tft_canvas.find_enclosed(x - 1, y - 1, x + w + 1, y + h + 1):
                             self.tft_canvas.delete(item)
-                        self.tft_canvas.create_rectangle(x, y, x + w, y + h, fill=color, outline=color, tags=rrect_tag)
+                        self.tft_canvas.create_rectangle(x, y, x + w, y + h, fill=color, outline="", tags=("bg_layer", rrect_tag))
                     else:
-                        self.tft_canvas.create_rectangle(x, y, x + w, y + h, fill="", outline=color, width=self.scale, tags=rrect_tag)
+                        self.tft_canvas.create_rectangle(x, y, x + w, y + h, fill="", outline=color, width=self.scale, tags=("border_layer", rrect_tag))
+                self.tft_canvas.tag_raise("text_layer")
 
             elif cmd == "CIRC":
                 # Circle: CIRC,x,y,r,color,fill
@@ -832,12 +835,13 @@ class VirtualTFTApp(tk.Tk):
                 circ_tag = f"circ_{x}_{y}_{r}"
                 existing_circ = self.tft_canvas.find_withtag(circ_tag)
                 if existing_circ:
-                    self.tft_canvas.itemconfigure(existing_circ[0], fill=color if is_fill else "", outline=color if is_fill else color)
+                    self.tft_canvas.itemconfigure(existing_circ[0], fill=color if is_fill else "", outline="" if is_fill else color)
                 else:
                     if is_fill:
-                        self.tft_canvas.create_oval(x - r, y - r, x + r, y + r, fill=color, outline=color, tags=circ_tag)
+                        self.tft_canvas.create_oval(x - r, y - r, x + r, y + r, fill=color, outline="", tags=("bg_layer", circ_tag))
                     else:
-                        self.tft_canvas.create_oval(x - r, y - r, x + r, y + r, fill="", outline=color, width=self.scale, tags=circ_tag)
+                        self.tft_canvas.create_oval(x - r, y - r, x + r, y + r, fill="", outline=color, width=self.scale, tags=("border_layer", circ_tag))
+                self.tft_canvas.tag_raise("text_layer")
 
             elif cmd == "TXT":
                 # Text: TXT,x,y,size,fgColor,bgColor,text...
@@ -862,16 +866,16 @@ class VirtualTFTApp(tk.Tk):
         cy = y * self.scale
 
         if size == 1:
-            f_size = -int(10 * self.scale)
+            f_size = -int(8 * self.scale)
             weight = "normal"
         elif size == 2:
-            f_size = -int(16 * self.scale)
+            f_size = -int(10.5 * self.scale)
             weight = "bold"
         elif size == 3:
-            f_size = -int(20 * self.scale)
+            f_size = -int(13.5 * self.scale)
             weight = "bold"
         else:
-            f_size = -int(26 * self.scale)
+            f_size = -int(17 * self.scale)
             weight = "bold"
 
         font_spec = (self.font_family, f_size, weight)
@@ -888,6 +892,7 @@ class VirtualTFTApp(tk.Tk):
         if tx_items:
             # Update existing text item directly in-place (100% flicker-free)
             self.tft_canvas.itemconfigure(tx_items[0], text=text_str, fill=fg, font=font_spec)
+            self.tft_canvas.tag_raise(tx_items[0])
             if is_colored_bg:
                 bbox = self.tft_canvas.bbox(tx_items[0])
                 if bbox:
@@ -895,18 +900,19 @@ class VirtualTFTApp(tk.Tk):
                         self.tft_canvas.coords(bg_items[0], bbox[0], bbox[1], bbox[2], bbox[3])
                         self.tft_canvas.itemconfigure(bg_items[0], fill=bg)
                     else:
-                        self.tft_canvas.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], fill=bg, outline="", tags=tag_bg)
-                        self.tft_canvas.tag_lower(tag_bg, tag_tx)
+                        self.tft_canvas.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], fill=bg, outline="", tags=(tag_bg, "bg_layer"))
+                    self.tft_canvas.tag_lower(tag_bg, tx_items[0])
             elif bg_items:
                 self.tft_canvas.delete(tag_bg)
         else:
             # First-time creation of text item
-            new_tx = self.tft_canvas.create_text(cx, cy, text=text_str, font=font_spec, fill=fg, anchor=tk.NW, tags=tag_tx)
+            new_tx = self.tft_canvas.create_text(cx, cy, text=text_str, font=font_spec, fill=fg, anchor=tk.NW, tags=(tag_tx, "text_layer"))
+            self.tft_canvas.tag_raise(new_tx)
             if is_colored_bg:
                 bbox = self.tft_canvas.bbox(new_tx)
                 if bbox:
-                    self.tft_canvas.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], fill=bg, outline="", tags=tag_bg)
-                    self.tft_canvas.tag_lower(tag_bg, tag_tx)
+                    self.tft_canvas.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], fill=bg, outline="", tags=(tag_bg, "bg_layer"))
+                    self.tft_canvas.tag_lower(tag_bg, new_tx)
             elif bg_items:
                 self.tft_canvas.delete(tag_bg)
 

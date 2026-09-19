@@ -2081,7 +2081,7 @@ void updateTFTDisplay() {
         getCurrentTimeString(timeStr, sizeof(timeStr));
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.fillRect(10, 2, 85, 14, 0x0841);
+        tft.fillRect(10, 2, 85, 16, 0x0841);
         tft.drawString(timeStr, 10, 2);
         s_lastClockSec = curClockSec;
     }
