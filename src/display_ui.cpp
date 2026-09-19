@@ -165,13 +165,97 @@ void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELL
     }
 }
 
+static uint32_t s_welcomeStartMs = 0;
+static bool s_welcomeDone = false;
+
+void drawWelcomeScreen(uint32_t elapsedMs) {
+    static bool s_welcomeStaticDrawn = false;
+    if (!s_welcomeStaticDrawn || elapsedMs == 0) {
+        tft.fillScreen(TFT_BLACK);
+
+        // 1. Outer Modern Card with Dark Cyan Border (x=10, y=10, w=300, h=220)
+        tft.drawRoundRect(10, 10, 300, 220, 8, 0x03EF);
+
+        // 2. Top Title Header (y=12..48, h=36)
+        tft.fillRect(12, 12, 296, 36, 0x0841);
+        tft.drawFastHLine(10, 48, 300, 0x03EF);
+
+        // Title: SUN SMART (FreeSansBold18)
+        tft.setFreeFont(FONT_FREE_BOLD_18);
+        tft.setTextColor(TFT_CYAN, 0x0841);
+        tft.drawCentreString("SUN SMART", 160, 18);
+
+        // Subtitle: DUAL HEATER CONTROLLER (FreeSansBold9)
+        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+        tft.drawCentreString("DUAL HEATER CONTROLLER", 160, 56);
+
+        // Divider Line
+        tft.drawFastHLine(24, 76, 272, 0x4A69);
+
+        // 3. Information Details (Labels in Light Grey, Values in Color)
+        uint64_t chipId = ESP.getEfuseMac();
+        char snStr[24];
+        snprintf(snStr, sizeof(snStr), "%04X%08X", (uint16_t)(chipId >> 32), (uint32_t)chipId);
+
+        // FW Version
+        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        tft.drawString("FW VERSION:", 28, 88);
+        tft.setTextColor(TFT_GREEN, TFT_BLACK);
+        tft.drawString(FIRMWARE_VERSION, 160, 88);
+
+        // ESP32 Serial Number
+        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        tft.drawString("SERIAL NO:", 28, 114);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(snStr, 160, 114);
+
+        // Software Build Date
+        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        tft.drawString("BUILD DATE:", 28, 140);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(__DATE__, 160, 140);
+
+        // Software Build Time
+        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        tft.drawString("BUILD TIME:", 28, 166);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(__TIME__, 160, 166);
+
+        // 4. Bottom Loading Bar Outline
+        tft.drawRoundRect(28, 212, 264, 8, 3, 0x4A69);
+
+        s_welcomeStaticDrawn = true;
+    }
+
+    // Dynamic Progress Bar & Countdown
+    uint32_t remainingSec = (elapsedMs < 5000) ? ((5000 - elapsedMs + 999) / 1000) : 0;
+    char secBuf[16];
+    snprintf(secBuf, sizeof(secBuf), "%us", (unsigned)remainingSec);
+
+    tft.setFreeFont(FONT_FREE_BOLD_9);
+    tft.setTextColor(0x52AA, TFT_BLACK);
+    tft.drawString("STARTING SYSTEM...", 28, 194);
+
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    tft.setTextPadding(40);
+    tft.drawRightString(secBuf, 292, 194);
+    tft.setTextPadding(0);
+
+    // Fill progress bar (0 to 260px)
+    int fillW = (int)((elapsedMs * 260) / 5000);
+    if (fillW > 260) fillW = 260;
+    if (fillW > 0) {
+        tft.fillRoundRect(30, 214, fillW, 4, 2, TFT_GREEN);
+    }
+}
+
 void initDisplayAndWeb() {
     tft.init();
     tft.setRotation(1); // 320x240 Landscape
-    tft.fillScreen(TFT_BLACK);
-    tft.setFreeFont(FONT_FREE_BOLD_9);
-    tft.drawString("SUN LAZER " FIRMWARE_VERSION, 20, 95);
-    tft.drawString("INITIALIZING...", 20, 125);
+    s_welcomeStartMs = millis();
+    s_welcomeDone = false;
+    drawWelcomeScreen(0);
 
 #if ENABLE_SERIAL_TFT
     // init virtual serial display mirror for headless testing
@@ -193,6 +277,10 @@ void injectAppButton(uint8_t btnMask) {
 #endif
 
 void handleButtonInputs() {
+    if (!s_welcomeDone) {
+        return; // Suppress button inputs during 5-second welcome screen
+    }
+
     static uint32_t lastButtonPress = 0;
     static uint32_t s_lastUpPressMs = 0;
     static uint32_t s_lastDownPressMs = 0;
@@ -1996,6 +2084,19 @@ void updateTFTDisplay() {
 
     static UIScreen_t s_lastDrawnScreen = (UIScreen_t)0xFF;
     static bool s_popupActive = false;
+
+    // 5-Second Welcome Screen handling on boot
+    if (!s_welcomeDone) {
+        uint32_t elapsed = millis() - s_welcomeStartMs;
+        if (elapsed < 5000) {
+            drawWelcomeScreen(elapsed);
+            return;
+        } else {
+            s_welcomeDone = true;
+            tft.fillScreen(TFT_BLACK);
+            s_lastDrawnScreen = (UIScreen_t)0xFF; // force full redraw of HOME screen
+        }
+    }
 
     bool isRunning = (sysStatus.currentState != STATE_IDLE && 
                       sysStatus.currentState != STATE_READY && 

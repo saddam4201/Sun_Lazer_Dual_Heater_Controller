@@ -405,6 +405,10 @@ public:
         return 0;
     }
 
+    int16_t drawCentreString(const char *string, int32_t dX, int32_t poY) {
+        return drawCentreString(string, dX, poY, getEffectiveFontSize());
+    }
+
     int16_t drawRightString(const char *string, int32_t dX, int32_t poY, uint8_t font) {
 #if ENABLE_PHYSICAL_TFT
         if (_physical_enabled) {
@@ -423,6 +427,10 @@ public:
         }
 #endif
         return 0;
+    }
+
+    int16_t drawRightString(const char *string, int32_t dX, int32_t poY) {
+        return drawRightString(string, dX, poY, getEffectiveFontSize());
     }
 
 private:

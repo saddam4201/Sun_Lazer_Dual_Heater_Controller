@@ -97,7 +97,7 @@ ILI9341_ORANGE      = 0xFDA0
 # MAIN APPLICATION
 # ==============================================================================
 FIRMWARE_NAME = "Sun Lazer Dual Heater Controller"
-APP_VERSION   = "v2.1"
+APP_VERSION   = "v2.2"
 
 
 class VirtualTFTApp(tk.Tk):
@@ -956,6 +956,33 @@ class VirtualTFTApp(tk.Tk):
     def demo_simulation_worker(self):
         """Simulates the Sun Lazer Dual Heater Controller modern card layout and live readings"""
         try:
+            # 5-second Welcome Screen (SUN Smart, FW Version, ESP32 Serial, Build Date)
+            self.cmd_queue.put("CLS,0x0000")
+            time.sleep(0.05)
+            self.cmd_queue.put("RRECT,10,10,300,220,8,0x03EF,0")
+            self.cmd_queue.put("RECT,12,12,296,36,0x0841,1")
+            self.cmd_queue.put("LINE,10,48,310,48,0x03EF")
+            self.cmd_queue.put("TXT,97,18,4,0x07FF,0x0841,SUN SMART")
+            self.cmd_queue.put("TXT,72,56,2,0xFFE0,0x0000,DUAL HEATER CONTROLLER")
+            self.cmd_queue.put("LINE,24,76,296,76,0x4A69")
+            self.cmd_queue.put("TXT,28,88,2,0xC618,0x0000,FW VERSION:")
+            self.cmd_queue.put(f"TXT,160,88,2,0x07E0,0x0000,{APP_VERSION}")
+            self.cmd_queue.put("TXT,28,114,2,0xC618,0x0000,SERIAL NO:")
+            self.cmd_queue.put("TXT,160,114,2,0xFFFF,0x0000,A1B2C3D4E5F6")
+            self.cmd_queue.put("TXT,28,140,2,0xC618,0x0000,BUILD DATE:")
+            self.cmd_queue.put("TXT,160,140,2,0xFFFF,0x0000,Sep 20 2026")
+            self.cmd_queue.put("TXT,28,166,2,0xC618,0x0000,BUILD TIME:")
+            self.cmd_queue.put("TXT,160,166,2,0xFFFF,0x0000,05:07:00")
+            self.cmd_queue.put("TXT,28,194,2,0x52AA,0x0000,STARTING SYSTEM...")
+            self.cmd_queue.put("RRECT,28,212,264,8,3,0x4A69,0")
+
+            for s in range(5, 0, -1):
+                self.cmd_queue.put(f"TXT,275,194,2,0x07FF,0x0000,{s}s")
+                prog_w = int((5 - s + 1) * 260 / 5)
+                self.cmd_queue.put(f"RRECT,30,214,{prog_w},4,2,0x07E0,1")
+                if self.sim_stop_event.wait(1.0):
+                    return
+
             self.cmd_queue.put("CLS,0x0000")
             time.sleep(0.05)
 
