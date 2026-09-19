@@ -9,7 +9,7 @@
 
 void vd_init() {
     Serial.println("[VIRT_TFT] Serial virtual display initialized");
-    Serial.println("[VIRT_TFT] Button Mapping: 1=UP, 2=DOWN, 3=LEFT (<-), 4=RIGHT (->), 5=OK");
+    Serial.println("[VIRT_TFT] Button Mapping: 1=UP, 2=DOWN, 3=LEFT (<-), 4=RIGHT (->), 5=START/STOP");
 }
 
 void vd_drawHomeScreen() {
@@ -77,7 +77,7 @@ void vd_drawHomeScreen() {
 
     // Print full snapshot when anything changed
     Serial.println("[VIRT_TFT] === HOME SCREEN ===");
-    Serial.printf("Program: %s (P%02d)\n", recipes[sysStatus.active_program_idx].name, sysStatus.active_program_idx + 1);
+    Serial.printf("Program: %s\n", recipes[sysStatus.active_program_idx].name);
 #if ENABLE_H1
     Serial.printf("H1 Set/Act: %.1f / %.1f C\n", recipes[sysStatus.active_program_idx].h1_setpoint_c, sysStatus.h1_actual_c);
 #else
@@ -113,9 +113,9 @@ void vd_drawHomeScreen() {
 
     // Force-start pending
     if (sysStatus.forceStartPending) {
-        Serial.printf("[VIRT_TFT] FORCE START PENDING (%us): Press [5/OK] to Force Start or [3/<-] to Cancel\n", (unsigned)force_remaining);
+        Serial.printf("[VIRT_TFT] FORCE START PENDING (%us): Press [5/START/STOP] to Force Start or [3/<-] to Cancel\n", (unsigned)force_remaining);
     } else {
-        Serial.println("[VIRT_TFT] Nav: [5/OK]: Start Process | [4/->]: Program Menu | [3/<-]: Service Diagnostics");
+        Serial.println("[VIRT_TFT] Nav: [5/START/STOP]: Start/Stop Process | [4/->]: Settings Menu");
     }
 
     Serial.println("[VIRT_TFT] ====================");
@@ -158,18 +158,19 @@ void vd_drawProgramSelectScreen() {
     Serial.println("[VIRT_TFT] === PROGRAM SELECT ===");
     for (int i = 0; i < 10; i++) {
         const char *cursor = (sysStatus.active_program_idx == i) ? "-> " : "   ";
-        Serial.printf("%sP%02d: %-16s | H1: %.1f C | H2: %.1f C | Time: %us\n",
-                      cursor, i + 1, recipes[i].name, recipes[i].h1_setpoint_c, recipes[i].h2_setpoint_c, (unsigned)recipes[i].process_time_sec);
+        Serial.printf("%s%-16s | H1: %.1f C | H2: %.1f C | Time: %us\n",
+                      cursor, recipes[i].name, recipes[i].h1_setpoint_c, recipes[i].h2_setpoint_c, (unsigned)recipes[i].process_time_sec);
     }
-    Serial.printf("Active program: P%02d (%s)\n", sysStatus.active_program_idx + 1, recipes[sysStatus.active_program_idx].name);
-    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Select Recipe | [5/OK, 4/->]: Edit Recipe | [3/<-]: Back to Home");
+    Serial.printf("Active program: %s\n", recipes[sysStatus.active_program_idx].name);
+    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Select Recipe | [4/->]: Edit Recipe | [3/<-]: Back to Home");
     Serial.println("[VIRT_TFT] ====================");
 }
 
 void vd_drawProgramEditScreen() {
     static int last_prog_idx = -1;
-    static float last_h1 = NAN, last_h2 = NAN, last_torque = NAN;
+    static float last_h1 = NAN, last_h2 = NAN, last_tol = NAN, last_o1 = NAN, last_o2 = NAN;
     static uint32_t last_time = 0xFFFFFFFF;
+    static uint8_t last_unit = 0xFF;
     static UIScreen_t last_screen = (UIScreen_t)0xFF;
 
     ProgramRecipe_t &rec = recipes[sysStatus.active_program_idx];
@@ -178,7 +179,10 @@ void vd_drawProgramEditScreen() {
                    (rec.h1_setpoint_c != last_h1) ||
                    (rec.h2_setpoint_c != last_h2) ||
                    (rec.process_time_sec != last_time) ||
-                   (rec.torque_limit_nm != last_torque);
+                   (rec.temp_tolerance_c != last_tol) ||
+                   (rec.h1_temp_offset_pct != last_o1) ||
+                   (rec.h2_temp_offset_pct != last_o2) ||
+                   (rec.torque_unit != last_unit);
 
     if (!changed) return;
     last_screen = currentScreen;
@@ -186,14 +190,20 @@ void vd_drawProgramEditScreen() {
     last_h1 = rec.h1_setpoint_c;
     last_h2 = rec.h2_setpoint_c;
     last_time = rec.process_time_sec;
-    last_torque = rec.torque_limit_nm;
+    last_tol = rec.temp_tolerance_c;
+    last_o1 = rec.h1_temp_offset_pct;
+    last_o2 = rec.h2_temp_offset_pct;
+    last_unit = rec.torque_unit;
 
-    Serial.printf("[VIRT_TFT] === PROGRAM EDIT (P%02d: %s) ===\n", sysStatus.active_program_idx + 1, rec.name);
-    Serial.printf("  H1 Target Temp : %.1f C\n", rec.h1_setpoint_c);
-    Serial.printf("  H2 Target Temp : %.1f C\n", rec.h2_setpoint_c);
-    Serial.printf("  Process Time   : %u s\n", (unsigned)rec.process_time_sec);
-    Serial.printf("  Torque Limit   : %.2f Nm\n", rec.torque_limit_nm);
-    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Change Value | [4/->]: Next Field | [5/OK]: Save Recipe | [3/<-]: Back");
+    Serial.printf("[VIRT_TFT] === PROGRAM EDIT (%s) ===\n", rec.name);
+    Serial.printf("  1. H1 Target Temp : %.1f C\n", rec.h1_setpoint_c);
+    Serial.printf("  2. H2 Target Temp : %.1f C\n", rec.h2_setpoint_c);
+    Serial.printf("  3. Process Time   : %u s\n", (unsigned)rec.process_time_sec);
+    Serial.printf("  4. Temp Tolerance : %+.1f C\n", rec.temp_tolerance_c);
+    Serial.printf("  5. H1 Offset %%    : %+.1f %%\n", rec.h1_temp_offset_pct);
+    Serial.printf("  6. H2 Offset %%    : %+.1f %%\n", rec.h2_temp_offset_pct);
+    Serial.printf("  7. Torque Unit    : %s\n", getTorqueUnitName((TorqueUnit_t)rec.torque_unit));
+    Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Move | [4/->]: Edit Field | [3/<-]: Save & Exit");
     Serial.println("[VIRT_TFT] ====================");
 }
 

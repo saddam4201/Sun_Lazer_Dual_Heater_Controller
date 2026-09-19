@@ -31,14 +31,18 @@ static bool performStartupChecks(char *reason, size_t len) {
         xSemaphoreGive(xSemaphoreSPI);
 
   #if ENABLE_H1
-        if (isnan(t1) || t1 < -10.0f) {
-            snprintf(reason, len, "H1 PT100 fault (code 0x%02X, read %.1f C)", f1, isnan(t1) ? 0.0f : t1);
+        if (f1 != 0 || isnan(t1)) {
+            Serial.printf("[BOOT] Note: H1 sensor not detected/fault (fault 0x%02X). Continuing in bench/standby mode.\n", f1);
+        } else if (t1 < -45.0f || t1 > 350.0f) {
+            snprintf(reason, len, "H1 PT100 fault (code 0x%02X, read %.1f C)", f1, t1);
             return false;
         }
   #endif
   #if ENABLE_H2
-        if (isnan(t2) || t2 < -10.0f) {
-            snprintf(reason, len, "H2 PT100 fault (code 0x%02X, read %.1f C)", f2, isnan(t2) ? 0.0f : t2);
+        if (f2 != 0 || isnan(t2)) {
+            Serial.printf("[BOOT] Note: H2 sensor not detected/fault (fault 0x%02X). Continuing in bench/standby mode.\n", f2);
+        } else if (t2 < -45.0f || t2 > 350.0f) {
+            snprintf(reason, len, "H2 PT100 fault (code 0x%02X, read %.1f C)", f2, t2);
             return false;
         }
   #endif
@@ -79,18 +83,50 @@ static bool performStartupChecks(char *reason, size_t len) {
 }
 
 // Define Global Objects
+#if ENABLE_UART_VIRTUAL_TFT
+Dual_TFT_eSPI tft = Dual_TFT_eSPI();
+#else
 TFT_eSPI tft = TFT_eSPI();
+#endif
 Adafruit_MAX31865 max1 = Adafruit_MAX31865(PIN_MAX31865_CS1, &SPI);
 Adafruit_MAX31865 max2 = Adafruit_MAX31865(PIN_MAX31865_CS2, &SPI);
 HX711 torqueScale;
 Preferences preferences;
+#if ENABLE_WIFI_WEBSERVER
 WebServer webServer(80);
+#endif
 
 SemaphoreHandle_t xSemaphoreSPI = NULL;
 QueueHandle_t xLogQueue = NULL;
 
 ProgramRecipe_t recipes[10];
 SystemStatus_t sysStatus;
+bool g_benchTempSimEnabled = false; // Disabled by default; enabled via Virtual TFT for bench testing
+
+RelayType_t g_relayType = RELAY_TYPE_SSR;
+TorqueUnit_t g_torqueUnit = TORQUE_UNIT_NM;
+float g_h1_temp_manip_pct = 0.0f;
+float g_h2_temp_manip_pct = 0.0f;
+bool g_simDownLimit = false;
+bool g_simHomeLimit = false;
+
+const char *getTorqueUnitName(TorqueUnit_t unit) {
+    switch (unit) {
+        case TORQUE_UNIT_KG_CM: return "kg.cm";
+        case TORQUE_UNIT_LB_IN: return "lb.in";
+        case TORQUE_UNIT_NM:
+        default:                return "Nm";
+    }
+}
+
+float getTorqueConversionFactor(TorqueUnit_t unit) {
+    switch (unit) {
+        case TORQUE_UNIT_KG_CM: return 10.19716f; // 1 Nm = 10.19716 kgf.cm
+        case TORQUE_UNIT_LB_IN: return 8.85075f;  // 1 Nm = 8.85075 lbf.in
+        case TORQUE_UNIT_NM:
+        default:                return 1.0f;
+    }
+}
 
 const char* stateNames[] = {
     "NONE", "IDLE", "SAFETY_CHECK", "MOVE_DOWN", "DOWN_LIMIT",
@@ -100,14 +136,21 @@ const char* stateNames[] = {
 
 void setup() {
     DEBUG_INIT(115200);
-#if ENABLE_SERIAL_TFT || INPUT_USE_SERIAL
+#if ENABLE_UART_VIRTUAL_TFT || ENABLE_SERIAL_TFT || INPUT_USE_SERIAL
     // Ensure Serial is available for virtual display and/or serial input
     Serial.begin(115200);
 #endif
 
+#if ENABLE_UART_VIRTUAL_TFT
+    tft.setPhysicalEnabled(ENABLE_PHYSICAL_TFT);
+    tft.setUartEnabled(ENABLE_UART_VIRTUAL_TFT);
+#endif
+
     // Deselect all SPI devices initially to prevent bus contention
+#if ENABLE_PHYSICAL_TFT
     safePinMode(PIN_TFT_CS, OUTPUT);
     safeDigitalWrite(PIN_TFT_CS, HIGH);
+#endif
     safePinMode(PIN_SD_CS, OUTPUT);
     safeDigitalWrite(PIN_SD_CS, HIGH);
     safePinMode(PIN_MAX31865_CS1, OUTPUT);
@@ -125,9 +168,9 @@ void setup() {
     safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
     safeDigitalWrite(PIN_MOTOR_UP, LOW);
 
-    // Sensor & Switch Inputs (safe-checked)
-    safePinMode(PIN_DOWN_LIMIT, INPUT_PULLUP);
-    safePinMode(PIN_HOME_LIMIT, INPUT_PULLUP);
+    // Sensor & Switch Inputs (safe-checked: GPIO 34/35 are input-only with external pull-ups)
+    safePinMode(PIN_DOWN_LIMIT, INPUT);
+    safePinMode(PIN_HOME_LIMIT, INPUT);
 #if ENABLE_PHYSICAL_BUTTONS
     safePinMode(PIN_BTN_UP, INPUT_PULLUP);
     safePinMode(PIN_BTN_DOWN, INPUT_PULLUP);
@@ -173,11 +216,15 @@ void setup() {
     DEBUG_PRINTF("[BOOT] SD present: %s\n", sd_ok ? "YES" : "NO");
     DEBUG_PRINTF("[BOOT] RTC present: %s\n", rtc_ok ? "YES" : "NO");
 
-#if ENABLE_SERIAL_TFT || INPUT_USE_SERIAL
+#if ENABLE_UART_VIRTUAL_TFT || ENABLE_SERIAL_TFT || INPUT_USE_SERIAL
     // Print a concise boot summary of enabled/disabled modules to Serial (useful for testing)
+    Serial.println("==================================================");
+    Serial.printf("Sun Lazer Dual Heater Controller (FW: %s)\n", FIRMWARE_VERSION);
     Serial.println("Developer: Saddam Khan");
+    Serial.println("==================================================");
     Serial.println("[BOOT] Module summary:");
-    Serial.printf("  Virtual TFT: %s\n", (ENABLE_SERIAL_TFT ? "ENABLED" : "DISABLED"));
+    Serial.printf("  Virtual UART TFT: %s\n", (ENABLE_UART_VIRTUAL_TFT ? "ENABLED" : "DISABLED"));
+    Serial.printf("  Physical TFT: %s\n", (ENABLE_PHYSICAL_TFT ? "ENABLED" : "DISABLED"));
     Serial.printf("  Physical buttons: %s\n", (ENABLE_PHYSICAL_BUTTONS ? "ENABLED" : "DISABLED"));
     Serial.printf("  Serial input (button emulation): %s\n", (INPUT_USE_SERIAL ? "ENABLED" : "DISABLED"));
     Serial.printf("  MAX31865 sensors: %s\n", (ENABLE_MAX31865 ? "ENABLED" : "DISABLED"));
@@ -193,6 +240,8 @@ void setup() {
     memset(&sysStatus, 0, sizeof(sysStatus));
 
     sysStatus.currentState = STATE_IDLE;
+    sysStatus.h1_actual_c = 25.0f; // Room temp default on bench
+    sysStatus.h2_actual_c = 25.0f;
     
     // Load last selected active program from NVS (default: 0)
     uint8_t savedProg = 0;
@@ -213,6 +262,14 @@ void setup() {
     bool startMode = true;
     loadStartModeFromNVS(&startMode);
     sysStatus.start_mode_auto = startMode;
+
+    // Load persisted settings (Relay Type, Torque Unit, Temp Manipulation)
+    loadRelayTypeFromNVS(&g_relayType);
+    loadTorqueUnitFromNVS(&g_torqueUnit);
+    loadTempManipFromNVS(&g_h1_temp_manip_pct, &g_h2_temp_manip_pct);
+    DEBUG_PRINTF("[BOOT] Relay: %s, Torque Unit: %s, Temp Manip: H1=%.1f%%, H2=%.1f%%\n",
+                 (g_relayType == RELAY_TYPE_SSR ? "SSR" : "NORMAL"),
+                 getTorqueUnitName(g_torqueUnit), g_h1_temp_manip_pct, g_h2_temp_manip_pct);
 
 #if INPUT_SERIAL_SIMULATOR
     // Provide safe default simulated sensor values for terminal-only testing (room temperature 25.0C)

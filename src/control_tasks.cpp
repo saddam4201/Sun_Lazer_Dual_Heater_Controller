@@ -17,6 +17,7 @@ void transitionToState(ProcessState_t newState) {
 }
 
 void triggerSafetyShutdown(const char* reason) {
+    sysStatus.forceStartActive = false;
     snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "%s", reason);
     DEBUG_LOG_SAFETY_TRIP(reason, 0);
     transitionToState(STATE_ALARM_FAULT);
@@ -33,19 +34,34 @@ void triggerSafetyShutdown(const char* reason) {
 void Task_SafetyAndControl(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     uint32_t movement_timer_ms = 0;
+    static bool s_processAbortedByLimitSwitch = false;
 
     for (;;) {
         DEBUG_TP_HIGH();
 
-#if INPUT_SERIAL_SIMULATOR
-        // In serial simulator mode, limit switch states are supplied via terminal commands
-        // and should not be read from hardware pins.
-        // sysStatus.down_limit_active and sysStatus.home_limit_active are controlled by simulator commands.
-        (void)PIN_DOWN_LIMIT; (void)PIN_HOME_LIMIT;
-#else
-        sysStatus.down_limit_active = (digitalRead(PIN_DOWN_LIMIT) == LOW);
-        sysStatus.home_limit_active = (digitalRead(PIN_HOME_LIMIT) == LOW);
-#endif
+        // Read physical limit switches with debounce (Active LOW) + Virtual Simulator override
+        static uint8_t down_deb_count = 0;
+        static uint8_t home_deb_count = 0;
+
+        int raw_down_pin = safeDigitalRead(PIN_DOWN_LIMIT);
+        int raw_home_pin = safeDigitalRead(PIN_HOME_LIMIT);
+
+        bool raw_down_active = (raw_down_pin == (LIMIT_SWITCH_ACTIVE_LOW ? LOW : HIGH)) || g_simDownLimit;
+        bool raw_home_active = (raw_home_pin == (LIMIT_SWITCH_ACTIVE_LOW ? LOW : HIGH)) || g_simHomeLimit;
+
+        if (raw_down_active) {
+            if (down_deb_count < 2) down_deb_count++;
+        } else {
+            down_deb_count = 0;
+        }
+        sysStatus.down_limit_active = (down_deb_count >= 2);
+
+        if (raw_home_active) {
+            if (home_deb_count < 2) home_deb_count++;
+        } else {
+            home_deb_count = 0;
+        }
+        sysStatus.home_limit_active = (home_deb_count >= 2);
 
 #if ENABLE_HX711
   #if INPUT_SERIAL_SIMULATOR
@@ -53,7 +69,7 @@ void Task_SafetyAndControl(void *pvParameters) {
         float raw_torque = fabsf(sysStatus.current_torque_nm);
         sysStatus.current_torque_nm = raw_torque;
         if (raw_torque > sysStatus.max_torque_nm) sysStatus.max_torque_nm = raw_torque;
-        if (raw_torque > recipes[sysStatus.active_program_idx].torque_limit_nm &&
+        if (raw_torque > MAX_TORQUE_OVERLOAD_NM &&
             (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT)) {
             triggerSafetyShutdown("TORQUE OVERLOAD TRIP");
         }
@@ -64,7 +80,7 @@ void Task_SafetyAndControl(void *pvParameters) {
             // track max torque during a run
             if (raw_torque > sysStatus.max_torque_nm) sysStatus.max_torque_nm = raw_torque;
 
-            if (raw_torque > recipes[sysStatus.active_program_idx].torque_limit_nm &&
+            if (raw_torque > MAX_TORQUE_OVERLOAD_NM &&
                (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT)) {
                 triggerSafetyShutdown("TORQUE OVERLOAD TRIP");
             }
@@ -78,17 +94,14 @@ void Task_SafetyAndControl(void *pvParameters) {
         switch (sysStatus.currentState) {
             case STATE_IDLE:
             case STATE_READY:
-#if INPUT_SERIAL_SIMULATOR
-                // In simulator mode, motor outputs are controlled by terminal commands only
-                (void)PIN_MOTOR_DOWN; (void)PIN_MOTOR_UP;
-#else
                 safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
                 safeDigitalWrite(PIN_MOTOR_UP, LOW);
-#endif
                 break;
 
             case STATE_SAFETY_CHECK:
-                if (sysStatus.h1_actual_c < -10.0f || sysStatus.h2_actual_c < -10.0f) {
+                s_processAbortedByLimitSwitch = false;
+                if (isnan(sysStatus.h1_actual_c) || sysStatus.h1_actual_c < -45.0f || sysStatus.h1_actual_c > 350.0f ||
+                    isnan(sysStatus.h2_actual_c) || sysStatus.h2_actual_c < -45.0f || sysStatus.h2_actual_c > 350.0f) {
                     triggerSafetyShutdown("SENSOR DISCONNECT FAULT");
                 } else {
                     // reset max torque for new run
@@ -100,93 +113,103 @@ void Task_SafetyAndControl(void *pvParameters) {
 
             case STATE_MOVE_DOWN:
                 if (sysStatus.down_limit_active) {
-#if INPUT_SERIAL_SIMULATOR
-                // Do not control motor pin in simulator mode
-                (void)PIN_MOTOR_DOWN;
-#else
-                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
-#endif
-                transitionToState(STATE_DOWN_LIMIT);
-            } else {
-#if INPUT_SERIAL_SIMULATOR
-                // In simulator mode, terminal should drive motor state; just check timeout
-                (void)PIN_MOTOR_DOWN;
-#else
-                safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
-#endif
-                if (millis() - movement_timer_ms > (LIMIT_SWITCH_DOWN_TIMEOUT_SEC * 1000UL)) {
-                    // Timeout reached: stop motor and proceed to next stage to avoid blocking the process.
-                    // Track failure and provide warning
-                    sysStatus.down_limit_fail_count++;
-                    sysStatus.last_down_limit_fail_ms = millis();
-                    
-                    char warningMsg[64];
-                    snprintf(warningMsg, sizeof(warningMsg), "Down limit timeout! Failures: %u", (unsigned)sysStatus.down_limit_fail_count);
-                    showLimitSwitchWarning(warningMsg);
-                    
-                    Serial.printf("[WARNING] Down limit switch not detected within %u s. Failure count: %u\n", 
-                                 (unsigned)LIMIT_SWITCH_DOWN_TIMEOUT_SEC, (unsigned)sysStatus.down_limit_fail_count);
-#if !INPUT_SERIAL_SIMULATOR
                     safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
-#endif
                     transitionToState(STATE_DOWN_LIMIT);
+                } else {
+                    safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
+                    if (millis() - movement_timer_ms > (LIMIT_SWITCH_DOWN_TIMEOUT_SEC * 1000UL)) {
+                        // Timeout reached: stop motor and proceed to next stage to avoid blocking the process.
+                        // Track failure and provide warning
+                        sysStatus.down_limit_fail_count++;
+                        sysStatus.last_down_limit_fail_ms = millis();
+                        
+                        char warningMsg[64];
+                        snprintf(warningMsg, sizeof(warningMsg), "Down limit timeout! Failures: %u", (unsigned)sysStatus.down_limit_fail_count);
+                        showLimitSwitchWarning(warningMsg);
+                        
+                        Serial.printf("[WARNING] Down limit switch not detected within %u s. Failure count: %u\n", 
+                                      (unsigned)LIMIT_SWITCH_DOWN_TIMEOUT_SEC, (unsigned)sysStatus.down_limit_fail_count);
+                        safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                        transitionToState(STATE_DOWN_LIMIT);
+                    }
                 }
-            }
-            break;
-
-            case STATE_DOWN_LIMIT:
-#if INPUT_SERIAL_SIMULATOR
-                (void)PIN_MOTOR_DOWN;
-#else
-                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
-#endif
-                transitionToState(STATE_HEAT_TO_SETPOINT);
                 break;
 
-            case STATE_HEAT_TO_SETPOINT:
-                if (fabs(sysStatus.h1_actual_c - recipes[sysStatus.active_program_idx].h1_setpoint_c) <= recipes[sysStatus.active_program_idx].temp_tolerance_c &&
-                    fabs(sysStatus.h2_actual_c - recipes[sysStatus.active_program_idx].h2_setpoint_c) <= recipes[sysStatus.active_program_idx].temp_tolerance_c) {
+            case STATE_DOWN_LIMIT:
+                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                if (sysStatus.forceStartActive || !sysStatus.start_mode_auto) {
+                    // Force-start or Manual mode: do NOT wait for temp setpoint, proceed directly to timer
+                    transitionToState(STATE_TEMPERATURE_READY);
+                } else {
+                    transitionToState(STATE_HEAT_TO_SETPOINT);
+                }
+                break;
+
+            case STATE_HEAT_TO_SETPOINT: {
+                if (!sysStatus.down_limit_active) {
+                    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                    sysStatus.remaining_time_sec = 0;
+                    showLimitSwitchWarning("Down limit opened during heating!");
+                    snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
+                    s_processAbortedByLimitSwitch = true;
+                    movement_timer_ms = millis();
+                    transitionToState(STATE_MOVE_UP);
+                    break;
+                }
+                float tol = fabs(recipes[sysStatus.active_program_idx].temp_tolerance_c);
+                if (fabs(sysStatus.h1_actual_c - recipes[sysStatus.active_program_idx].h1_setpoint_c) <= tol &&
+                    fabs(sysStatus.h2_actual_c - recipes[sysStatus.active_program_idx].h2_setpoint_c) <= tol) {
                     transitionToState(STATE_TEMPERATURE_READY);
                 }
                 break;
+            }
 
             case STATE_TEMPERATURE_READY:
+                if (!sysStatus.down_limit_active) {
+                    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                    sysStatus.remaining_time_sec = 0;
+                    showLimitSwitchWarning("Down limit opened before timer!");
+                    snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
+                    s_processAbortedByLimitSwitch = true;
+                    movement_timer_ms = millis();
+                    transitionToState(STATE_MOVE_UP);
+                    break;
+                }
                 sysStatus.remaining_time_sec = recipes[sysStatus.active_program_idx].process_time_sec;
                 transitionToState(STATE_PROCESS_TIMER);
                 break;
 
             case STATE_PROCESS_TIMER:
+                if (!sysStatus.down_limit_active) {
+                    // Down limit switch deactivated while process timer is running!
+                    // Heater has its own independent switch - do not take any action on heater/SSRs
+                    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                    sysStatus.remaining_time_sec = 0;
+                    showLimitSwitchWarning("Down limit switch opened!");
+                    snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
+                    s_processAbortedByLimitSwitch = true;
+                    movement_timer_ms = millis();
+                    transitionToState(STATE_MOVE_UP);
+                    break;
+                }
                 if (sysStatus.remaining_time_sec == 0) {
                     transitionToState(STATE_TIMER_COMPLETE);
                 }
                 break;
 
             case STATE_TIMER_COMPLETE:
-#if INPUT_SERIAL_SIMULATOR
-                // Let terminal control SSRs in simulator mode
-                (void)PIN_SSR_1; (void)PIN_SSR_2;
-#else
                 safeDigitalWrite(PIN_SSR_1, LOW);
                 safeDigitalWrite(PIN_SSR_2, LOW);
-#endif
                 movement_timer_ms = millis();
                 transitionToState(STATE_MOVE_UP);
                 break;
 
             case STATE_MOVE_UP:
                 if (sysStatus.home_limit_active) {
-#if INPUT_SERIAL_SIMULATOR
-                    (void)PIN_MOTOR_UP;
-#else
                     safeDigitalWrite(PIN_MOTOR_UP, LOW);
-#endif
                     transitionToState(STATE_HOME_LIMIT);
                 } else {
-#if INPUT_SERIAL_SIMULATOR
-                    (void)PIN_MOTOR_UP;
-#else
                     safeDigitalWrite(PIN_MOTOR_UP, HIGH);
-#endif
                     if (millis() - movement_timer_ms > (LIMIT_SWITCH_HOME_TIMEOUT_SEC * 1000UL)) {
                         // Timeout reached: stop motor and proceed to next stage
                         // Track failure and provide warning
@@ -198,21 +221,15 @@ void Task_SafetyAndControl(void *pvParameters) {
                         showLimitSwitchWarning(warningMsg);
                         
                         Serial.printf("[WARNING] Home limit switch not detected within %u s. Failure count: %u\n", 
-                                     (unsigned)LIMIT_SWITCH_HOME_TIMEOUT_SEC, (unsigned)sysStatus.home_limit_fail_count);
-#if !INPUT_SERIAL_SIMULATOR
+                                      (unsigned)LIMIT_SWITCH_HOME_TIMEOUT_SEC, (unsigned)sysStatus.home_limit_fail_count);
                         safeDigitalWrite(PIN_MOTOR_UP, LOW);
-#endif
                         transitionToState(STATE_HOME_LIMIT);
                     }
                 }
                 break;
 
             case STATE_HOME_LIMIT:
-#if INPUT_SERIAL_SIMULATOR
-                (void)PIN_MOTOR_UP;
-#else
                 safeDigitalWrite(PIN_MOTOR_UP, LOW);
-#endif
                 transitionToState(STATE_SAVE_RECORD);
                 break;
 
@@ -221,8 +238,8 @@ void Task_SafetyAndControl(void *pvParameters) {
                 char csvBuf[256];
                 char ts[32];
                 getTimestampForLog(ts, sizeof(ts));
-                const char *result = (sysStatus.currentState == STATE_ALARM_FAULT) ? "ALARM" : "OK";
-                const char *alarmcode = (sysStatus.currentState == STATE_ALARM_FAULT) ? sysStatus.alarm_msg : "";
+                const char *result = (s_processAbortedByLimitSwitch || sysStatus.currentState == STATE_ALARM_FAULT) ? "ALARM" : "OK";
+                const char *alarmcode = (s_processAbortedByLimitSwitch || sysStatus.currentState == STATE_ALARM_FAULT) ? sysStatus.alarm_msg : "";
                 snprintf(csvBuf, sizeof(csvBuf), "%s,P%02d,%.1f,%.1f,%.1f,%.1f,%u,%.2f,%s,%s",
                          ts,
                          sysStatus.active_program_idx + 1,
@@ -235,23 +252,26 @@ void Task_SafetyAndControl(void *pvParameters) {
                          result,
                          alarmcode);
                 xQueueSend(xLogQueue, csvBuf, 0);
-                transitionToState(STATE_PROCESS_COMPLETE);
+                if (s_processAbortedByLimitSwitch) {
+                    s_processAbortedByLimitSwitch = false;
+                    sysStatus.forceStartActive = false;
+                    transitionToState(STATE_ALARM_FAULT);
+                } else {
+                    transitionToState(STATE_PROCESS_COMPLETE);
+                }
                 break;
             }
 
             case STATE_PROCESS_COMPLETE:
+                sysStatus.forceStartActive = false;
                 transitionToState(STATE_READY);
                 break;
 
             case STATE_ALARM_FAULT:
-#if INPUT_SERIAL_SIMULATOR
-                (void)PIN_MOTOR_DOWN; (void)PIN_MOTOR_UP; (void)PIN_SSR_1; (void)PIN_SSR_2;
-#else
                 safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
                 safeDigitalWrite(PIN_MOTOR_UP, LOW);
                 safeDigitalWrite(PIN_SSR_1, LOW);
                 safeDigitalWrite(PIN_SSR_2, LOW);
-#endif
                 break;
         }
 
@@ -295,7 +315,6 @@ float readPT100Temperature(Adafruit_MAX31865 &maxSensor, uint8_t &faultCode) {
 
 void Task_TemperaturePID(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const uint32_t cycleWindowMs = 1000; // 1s time proportioning window
 
     h1_pid.SetMode(AUTOMATIC);
     h1_pid.SetOutputLimits(0, 100);
@@ -303,43 +322,77 @@ void Task_TemperaturePID(void *pvParameters) {
     h2_pid.SetOutputLimits(0, 100);
 
     for (;;) {
-#if ENABLE_MAX31865
-  #if INPUT_SERIAL_SIMULATOR
-        // Do not touch real sensors in simulator mode — use values provided by serial commands
-        (void)xSemaphoreSPI;
-        // sysStatus.h1_actual_c and h2_actual_c are driven by the simulator commands or defaults
-  #else
-        if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(250)) == pdTRUE) {
-            uint8_t f1 = 0, f2 = 0;
-            float raw1 = readPT100Temperature(max1, f1);
-            float raw2 = readPT100Temperature(max2, f2);
-            xSemaphoreGive(xSemaphoreSPI);
+        // Dynamic time window: 1s for SSR (fast PWM/switching), 10s for Normal Mechanical Relay
+        const uint32_t cycleWindowMs = (g_relayType == RELAY_TYPE_SSR) ? 1000 : 10000;
 
-            // Heater 1 validation and noise smoothing
-            if (!isnan(raw1)) {
-                if (sysStatus.h1_actual_c < -40.0f || sysStatus.h1_actual_c == 0.0f) {
-                    sysStatus.h1_actual_c = raw1;
-                } else {
-                    sysStatus.h1_actual_c = (sysStatus.h1_actual_c * 0.7f) + (raw1 * 0.3f);
+#if ENABLE_MAX31865
+        if (!g_benchTempSimEnabled) {
+            // Real Hardware Mode: actively read MAX31865 sensor on CS 14
+            if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(250)) == pdTRUE) {
+                uint8_t f1 = 0;
+                float raw1 = readPT100Temperature(max1, f1);
+                xSemaphoreGive(xSemaphoreSPI);
+
+                if (!isnan(raw1)) {
+                    static float raw1_smoothed = 25.0f;
+                    if (raw1_smoothed < -40.0f || raw1_smoothed == 25.0f) {
+                        raw1_smoothed = raw1;
+                    } else {
+                        raw1_smoothed = (raw1_smoothed * 0.7f) + (raw1 * 0.3f);
+                    }
+
+#if ENABLE_TEMP_MANIPULATION
+                    // Manipulate actual temp with x% of the heater threshold (setpoint)
+                    float h1_set = recipes[sysStatus.active_program_idx].h1_setpoint_c;
+                    float h2_set = recipes[sysStatus.active_program_idx].h2_setpoint_c;
+                    float h1_pct = recipes[sysStatus.active_program_idx].h1_temp_offset_pct;
+                    float h2_pct = recipes[sysStatus.active_program_idx].h2_temp_offset_pct;
+                    sysStatus.h1_actual_c = raw1_smoothed + (h1_pct / 100.0f) * h1_set;
+                    sysStatus.h2_actual_c = raw1_smoothed + (h2_pct / 100.0f) * h2_set;
+#else
+                    sysStatus.h1_actual_c = raw1_smoothed;
+                    sysStatus.h2_actual_c = raw1_smoothed;
+#endif
+                } else if (f1 != 0 || isnan(raw1)) {
+                    DEBUG_PRINTF("[MAX31865] H1 Fault: 0x%02X\n", f1);
+                    if (sysStatus.h1_actual_c <= 0.0f) {
+                        sysStatus.h1_actual_c = 25.0f;
+                        sysStatus.h2_actual_c = 25.0f;
+                    }
                 }
-            } else if (f1 != 0) {
-                DEBUG_PRINTF("[MAX31865] H1 Fault: 0x%02X\n", f1);
+            }
+        } else {
+            // Bench Simulator Mode (enabled from Virtual TFT):
+            // Simulate thermal rise when SSRs are active, and cooling when inactive
+            float h1_tgt = recipes[sysStatus.active_program_idx].h1_setpoint_c;
+            float h2_tgt = recipes[sysStatus.active_program_idx].h2_setpoint_c;
+
+            if (digitalRead(PIN_SSR_1) == HIGH || sysStatus.currentState == STATE_HEAT_TO_SETPOINT || sysStatus.currentState == STATE_PROCESS_TIMER) {
+                if (sysStatus.h1_actual_c < h1_tgt) {
+                    sysStatus.h1_actual_c += (h1_tgt - sysStatus.h1_actual_c) * 0.05f + 0.3f;
+                    if (sysStatus.h1_actual_c > h1_tgt) sysStatus.h1_actual_c = h1_tgt;
+                }
+            } else {
+                if (sysStatus.h1_actual_c > 25.0f) {
+                    sysStatus.h1_actual_c -= (sysStatus.h1_actual_c - 25.0f) * 0.02f + 0.05f;
+                    if (sysStatus.h1_actual_c < 25.0f) sysStatus.h1_actual_c = 25.0f;
+                }
             }
 
-            // Heater 2 validation and noise smoothing
-            if (!isnan(raw2)) {
-                if (sysStatus.h2_actual_c < -40.0f || sysStatus.h2_actual_c == 0.0f) {
-                    sysStatus.h2_actual_c = raw2;
-                } else {
-                    sysStatus.h2_actual_c = (sysStatus.h2_actual_c * 0.7f) + (raw2 * 0.3f);
+            if (digitalRead(PIN_SSR_2) == HIGH || sysStatus.currentState == STATE_HEAT_TO_SETPOINT || sysStatus.currentState == STATE_PROCESS_TIMER) {
+                if (sysStatus.h2_actual_c < h2_tgt) {
+                    sysStatus.h2_actual_c += (h2_tgt - sysStatus.h2_actual_c) * 0.05f + 0.3f;
+                    if (sysStatus.h2_actual_c > h2_tgt) sysStatus.h2_actual_c = h2_tgt;
                 }
-            } else if (f2 != 0) {
-                DEBUG_PRINTF("[MAX31865] H2 Fault: 0x%02X\n", f2);
+            } else {
+                if (sysStatus.h2_actual_c > 25.0f) {
+                    sysStatus.h2_actual_c -= (sysStatus.h2_actual_c - 25.0f) * 0.02f + 0.05f;
+                    if (sysStatus.h2_actual_c < 25.0f) sysStatus.h2_actual_c = 25.0f;
+                }
             }
         }
-  #endif
 #else
-        // MAX31865 disabled: emulate readings as the configured setpoints so process can proceed in test mode
+        // MAX31865 disabled at compile-time: match setpoints
         sysStatus.h1_actual_c = recipes[sysStatus.active_program_idx].h1_setpoint_c;
         sysStatus.h2_actual_c = recipes[sysStatus.active_program_idx].h2_setpoint_c;
 #endif
@@ -371,33 +424,33 @@ void Task_TemperaturePID(void *pvParameters) {
             h2_output = 0.0;
 #endif
 
-            // Time-proportioning control for SSRs (only if heater enabled)
+            // Time-proportioning control for SSRs/relays (only if heater enabled)
             uint32_t now = millis();
             uint32_t pos = now % cycleWindowMs;
 #if ENABLE_H1
             uint32_t onTime1 = (uint32_t)((h1_output / 100.0) * cycleWindowMs);
+            // In Normal Relay mode, prevent rapid contact chatter (min 10% on, max 90% off)
+            if (g_relayType == RELAY_TYPE_NORMAL) {
+                if (onTime1 < 1000) onTime1 = 0;
+                else if (onTime1 > 9000) onTime1 = 10000;
+            }
 #else
             uint32_t onTime1 = 0;
 #endif
 #if ENABLE_H2
             uint32_t onTime2 = (uint32_t)((h2_output / 100.0) * cycleWindowMs);
+            if (g_relayType == RELAY_TYPE_NORMAL) {
+                if (onTime2 < 1000) onTime2 = 0;
+                else if (onTime2 > 9000) onTime2 = 10000;
+            }
 #else
             uint32_t onTime2 = 0;
 #endif
-#if INPUT_SERIAL_SIMULATOR
-            // In simulator mode, SSR outputs are controlled from terminal commands only
-            (void)pos; (void)onTime1; (void)onTime2;
-#else
             safeDigitalWrite(PIN_SSR_1, (pos < onTime1) ? HIGH : LOW);
             safeDigitalWrite(PIN_SSR_2, (pos < onTime2) ? HIGH : LOW);
-#endif
         } else {
-#if INPUT_SERIAL_SIMULATOR
-            (void)PIN_SSR_1; (void)PIN_SSR_2;
-#else
             safeDigitalWrite(PIN_SSR_1, LOW);
             safeDigitalWrite(PIN_SSR_2, LOW);
-#endif
         }
 
         static uint8_t tick_count = 0;
@@ -419,7 +472,9 @@ void Task_UIAndWeb(void *pvParameters) {
     for (;;) {
         handleButtonInputs();
 
+#if ENABLE_WIFI_WEBSERVER
         webServer.handleClient();
+#endif
 
         if (millis() - lastDisplayUpdate >= 150) {
             lastDisplayUpdate = millis();

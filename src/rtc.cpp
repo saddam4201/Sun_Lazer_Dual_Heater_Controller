@@ -69,6 +69,7 @@ bool getRTCTimeComponents(uint16_t *year, uint8_t *month, uint8_t *day, uint8_t 
     return true;
 }
 
+#if ENABLE_WIFI_WEBSERVER
 void addRTCWebHandlers(WebServer &server) {
     // GET /rtc -> returns current RTC time as text/plain (YYYY-MM-DD HH:MM:SS)
     server.on("/rtc", [&server]() {
@@ -99,6 +100,7 @@ void addRTCWebHandlers(WebServer &server) {
         }
     });
 }
+#endif
 
 #else // ENABLE_RTC == 0
 
@@ -124,6 +126,7 @@ bool getRTCTimeComponents(uint16_t *year, uint8_t *month, uint8_t *day, uint8_t 
     return false;
 }
 
+#if ENABLE_WIFI_WEBSERVER
 void addRTCWebHandlers(WebServer &server) {
     server.on("/rtc", [&server]() {
         server.send(404, "text/plain", "RTC disabled");
@@ -132,5 +135,6 @@ void addRTCWebHandlers(WebServer &server) {
         server.send(404, "text/plain", "RTC disabled");
     });
 }
+#endif
 
 #endif // ENABLE_RTC
