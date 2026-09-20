@@ -97,7 +97,7 @@ ILI9341_ORANGE      = 0xFDA0
 # MAIN APPLICATION
 # ==============================================================================
 FIRMWARE_NAME = "Sun Lazer Dual Heater Controller"
-APP_VERSION   = "v2.3"
+APP_VERSION   = "v2.4"
 
 
 class VirtualTFTApp(tk.Tk):
@@ -995,8 +995,8 @@ class VirtualTFTApp(tk.Tk):
             self.cmd_queue.put("TXT,246,2,2,0x07E0,0x0841,SD")
             self.cmd_queue.put("TXT,274,2,2,0x07E0,0x0841,AUTO")
             # Row 2: Sun Smart + Program Name (y = 16..39)
-            self.cmd_queue.put("TXT,10,20,2,0x07FF,0x0841,Sun Smart")
-            self.cmd_queue.put("TXT,170,20,2,0xFFE0,0x0841,Standard Seal")
+            self.cmd_queue.put("TXT,10,20,3,0x07FF,0x0841,Sun Smart")
+            self.cmd_queue.put("TXT,170,20,3,0xFFE0,0x0841,Standard Seal")
 
             # Status Banner (y = 43..63, h = 20)
             self.cmd_queue.put("RRECT,6,43,308,20,3,0x03E0,0")

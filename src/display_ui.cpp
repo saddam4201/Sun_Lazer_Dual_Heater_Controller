@@ -153,6 +153,7 @@ void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELL
     tft.drawString("WiFi", badgeX, 2);
 
     // 3. App Bar Row (y = 16..39)
+    tft.setFreeFont(FONT_FREE_BOLD_12);
     tft.setTextColor(TFT_CYAN, 0x0841);
     tft.drawString("Sun Smart", 10, 20);
 
@@ -163,6 +164,7 @@ void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELL
         tft.drawString(rightBadgeText, 170, 20);
         tft.setTextPadding(0);
     }
+    tft.setFreeFont(FONT_FREE_BOLD_9);
 }
 
 static uint32_t s_welcomeStartMs = 0;
@@ -940,11 +942,12 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || sysStatus.active_program_idx != last_prog_idx) {
         char pgmBuf[32];
         snprintf(pgmBuf, sizeof(pgmBuf), "%s", recipes[sysStatus.active_program_idx].name);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.setFreeFont(FONT_FREE_BOLD_12);
         tft.setTextColor(TFT_YELLOW, 0x0841);
         tft.setTextPadding(140);
         tft.drawString(pgmBuf, 170, 20);
         tft.setTextPadding(0);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         last_prog_idx = sysStatus.active_program_idx;
     }
 
@@ -1258,12 +1261,13 @@ void drawSettingsMenu(bool fullRedraw) {
         tft.drawRoundRect(10, curY, 300, cardH, 4, isSel ? TFT_GREEN : 0x4A69);
         tft.fillRect(11, curY + 1, 298, cardH - 2, isSel ? 0x10C2 : TFT_BLACK);
 
-        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.setFreeFont(FONT_FREE_BOLD_12);
         tft.setTextColor(isSel ? TFT_GREEN : TFT_WHITE, isSel ? 0x10C2 : TFT_BLACK);
         char titleBuf[52];
         snprintf(titleBuf, sizeof(titleBuf), "%s%s", isSel ? "> " : "  ", menuItems[itemIdx]);
-        tft.drawString(titleBuf, 16, curY + 8);
+        tft.drawString(titleBuf, 16, curY + 7);
     }
+    tft.setFreeFont(FONT_FREE_BOLD_9);
 
     last_sel = settingsMenuIdx;
     last_relay = g_relayType;
