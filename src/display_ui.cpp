@@ -283,27 +283,112 @@ void handleButtonInputs() {
         return; // Suppress button inputs during 5-second welcome screen
     }
 
-    static uint32_t lastButtonPress = 0;
-    static uint32_t s_lastUpPressMs = 0;
-    static uint32_t s_lastDownPressMs = 0;
-    static uint16_t s_upHoldCount = 0;
-    static uint16_t s_downHoldCount = 0;
+    // Industrial Button State Machine: 30ms stable debounce filter & edge detection
+    enum BtnIndex { BTN_IDX_UP = 0, BTN_IDX_DOWN, BTN_IDX_LEFT, BTN_IDX_RIGHT, BTN_IDX_OK, BTN_COUNT };
+    static const uint8_t s_btnPins[BTN_COUNT] = { PIN_BTN_UP, PIN_BTN_DOWN, PIN_BTN_LEFT, PIN_BTN_RIGHT, PIN_BTN_OK };
+    static bool s_stableState[BTN_COUNT]      = { false, false, false, false, false };
+    static bool s_lastRaw[BTN_COUNT]          = { false, false, false, false, false };
+    static uint32_t s_lastChangeMs[BTN_COUNT] = { 0, 0, 0, 0, 0 };
 
-    bool isUpPhysHeld = false;
-    bool isDownPhysHeld = false;
+    // Typematic auto-repeat state for UP and DOWN
+    static uint32_t s_holdStartTime[2]  = { 0, 0 }; // [0]=UP, [1]=DOWN
+    static uint32_t s_nextRepeatMs[2]   = { 0, 0 };
+    static uint16_t s_upHoldCount       = 0;
+    static uint16_t s_downHoldCount     = 0;
+
+    uint32_t now = millis();
+    bool justPressed[BTN_COUNT]  = { false, false, false, false, false };
+    bool justReleased[BTN_COUNT] = { false, false, false, false, false };
+
 #if ENABLE_PHYSICAL_BUTTONS
-    isUpPhysHeld = (safeDigitalRead(PIN_BTN_UP) == LOW);
-    isDownPhysHeld = (safeDigitalRead(PIN_BTN_DOWN) == LOW);
-#endif
-
-    uint32_t debounceInterval = 150;
-    if (currentScreen == SCREEN_RECIPE_EDIT && s_inValueEditMode && (selectedEditField == 1 || selectedEditField == 2 || selectedEditField == 3)) {
-        if ((isUpPhysHeld && s_upHoldCount > 3) || (isDownPhysHeld && s_downHoldCount > 3)) {
-            debounceInterval = (s_upHoldCount > 8 || s_downHoldCount > 8) ? 60 : 80; // Accelerate repeat rate when held
+    for (int i = 0; i < BTN_COUNT; i++) {
+        bool rawPressed = (safeDigitalRead(s_btnPins[i]) == LOW);
+        if (rawPressed != s_lastRaw[i]) {
+            s_lastRaw[i] = rawPressed;
+            s_lastChangeMs[i] = now;
+        } else if ((now - s_lastChangeMs[i]) >= 30) {
+            // Raw state has remained stable for >= 30ms: latch state change
+            if (rawPressed != s_stableState[i]) {
+                s_stableState[i] = rawPressed;
+                if (s_stableState[i]) {
+                    justPressed[i] = true;
+                } else {
+                    justReleased[i] = true;
+                }
+            }
         }
     }
+#endif
 
-    bool btnUp = false, btnDown = false, btnLeft = false, btnRight = false, btnOk = false;
+    // One-shot edge-triggered buttons: OK (Start/Stop), LEFT (Back), RIGHT (Select/Enter)
+    // In industrial systems, these MUST NEVER auto-repeat when held.
+    bool btnOk    = justPressed[BTN_IDX_OK];
+    bool btnLeft  = justPressed[BTN_IDX_LEFT];
+    bool btnRight = justPressed[BTN_IDX_RIGHT];
+
+    bool rawUp = false;
+    bool rawDown = false;
+#if ENABLE_PHYSICAL_BUTTONS
+    rawUp = (safeDigitalRead(PIN_BTN_UP) == LOW);
+    rawDown = (safeDigitalRead(PIN_BTN_DOWN) == LOW);
+#endif
+
+    // Typematic Repeat Buttons: UP and DOWN
+    // 1. Initial Press (Single Click): fires immediately on justPressed
+    // 2. Initial Hold Delay: 400ms before auto-repeating
+    // 3. Multi-Stage Accelerated Repeat:
+    //    - 400ms .. 1400ms: 120ms interval (smooth single-step navigation)
+    //    - 1400ms .. 3000ms: 60ms interval (fast tuning)
+    //    - > 3000ms: 35ms interval (high-speed rapid scroll)
+    bool btnUp = false;
+    if (justPressed[BTN_IDX_UP]) {
+        btnUp = true;
+        s_holdStartTime[0] = now;
+        s_nextRepeatMs[0]  = now + 400; // 400ms initial hold delay
+        s_upHoldCount      = 0;
+    } else if (s_stableState[BTN_IDX_UP] && rawUp) {
+        if (now >= s_nextRepeatMs[0]) {
+            btnUp = true;
+            s_upHoldCount++;
+            uint32_t heldMs = now - s_holdStartTime[0];
+            uint32_t interval = 120;
+            if (heldMs > 3000) {
+                interval = 35;
+            } else if (heldMs > 1400) {
+                interval = 60;
+            }
+            s_nextRepeatMs[0] = now + interval;
+        }
+    }
+    if (justReleased[BTN_IDX_UP] || !s_stableState[BTN_IDX_UP] || !rawUp) {
+        s_upHoldCount = 0;
+        s_holdStartTime[0] = 0;
+    }
+
+    bool btnDown = false;
+    if (justPressed[BTN_IDX_DOWN]) {
+        btnDown = true;
+        s_holdStartTime[1] = now;
+        s_nextRepeatMs[1]  = now + 400; // 400ms initial hold delay
+        s_downHoldCount    = 0;
+    } else if (s_stableState[BTN_IDX_DOWN] && rawDown) {
+        if (now >= s_nextRepeatMs[1]) {
+            btnDown = true;
+            s_downHoldCount++;
+            uint32_t heldMs = now - s_holdStartTime[1];
+            uint32_t interval = 120;
+            if (heldMs > 3000) {
+                interval = 35;
+            } else if (heldMs > 1400) {
+                interval = 60;
+            }
+            s_nextRepeatMs[1] = now + interval;
+        }
+    }
+    if (justReleased[BTN_IDX_DOWN] || !s_stableState[BTN_IDX_DOWN] || !rawDown) {
+        s_downHoldCount = 0;
+        s_holdStartTime[1] = 0;
+    }
 
 #if ENABLE_APP_REMOTE
     uint8_t remoteMask = g_appButtonMask;
@@ -317,20 +402,11 @@ void handleButtonInputs() {
     }
 #endif
 
-#if ENABLE_PHYSICAL_BUTTONS
-    if (safeDigitalRead(PIN_BTN_UP) == LOW)    btnUp = true;
-    if (safeDigitalRead(PIN_BTN_DOWN) == LOW)  btnDown = true;
-    if (safeDigitalRead(PIN_BTN_LEFT) == LOW)  btnLeft = true;
-    if (safeDigitalRead(PIN_BTN_RIGHT) == LOW) btnRight = true;
-    if (safeDigitalRead(PIN_BTN_OK) == LOW)    btnOk = true;
-#endif
-
 #if INPUT_USE_SERIAL
-    // Serial-mode keys:
+    // Serial-mode keys (bench testing / virtual display):
     while (Serial && Serial.available()) {
         char c = Serial.read();
-        if (c == '\r') continue;
-        if (c == '\n') continue;
+        if (c == '\r' || c == '\n') continue;
         switch (c) {
             case '1': btnUp = true; break;
             case '2': btnDown = true; break;
@@ -348,38 +424,7 @@ void handleButtonInputs() {
         btnOk = false;
     }
 
-    // Debounce check for all buttons (identical to setting button)
-    if (btnUp || btnDown || btnLeft || btnRight || btnOk) {
-        if (millis() - lastButtonPress < debounceInterval) {
-            btnUp = false; btnDown = false; btnLeft = false; btnRight = false; btnOk = false;
-        } else {
-            lastButtonPress = millis();
-        }
-    }
-
     if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk) return;
-
-    if (btnUp) {
-        if (isUpPhysHeld || (millis() - s_lastUpPressMs < 350)) {
-            s_upHoldCount++;
-        } else {
-            s_upHoldCount = 1;
-        }
-        s_lastUpPressMs = millis();
-    } else if (!isUpPhysHeld) {
-        s_upHoldCount = 0;
-    }
-
-    if (btnDown) {
-        if (isDownPhysHeld || (millis() - s_lastDownPressMs < 350)) {
-            s_downHoldCount++;
-        } else {
-            s_downHoldCount = 1;
-        }
-        s_lastDownPressMs = millis();
-    } else if (!isDownPhysHeld) {
-        s_downHoldCount = 0;
-    }
 
     // Button 5 (btnOk): Exclusively START / STOP machine cycle operation
     if (btnOk) {
