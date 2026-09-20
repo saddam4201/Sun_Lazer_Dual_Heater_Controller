@@ -97,7 +97,7 @@ ILI9341_ORANGE      = 0xFDA0
 # MAIN APPLICATION
 # ==============================================================================
 FIRMWARE_NAME = "Sun Lazer Dual Heater Controller"
-APP_VERSION   = "v3.0"
+APP_VERSION   = "v3.1"
 
 
 class VirtualTFTApp(tk.Tk):
@@ -990,62 +990,55 @@ class VirtualTFTApp(tk.Tk):
             self.cmd_queue.put("CLS,0x0000")
             time.sleep(0.05)
 
-            # Mobile Style Top Header (y = 0..40, h = 40)
-            self.cmd_queue.put("RECT,0,0,320,40,0x0841,1")
-            self.cmd_queue.put("LINE,0,40,320,40,0x03EF")
-            # Row 1: RTC Time + Badges (y = 0..16)
-            self.cmd_queue.put("TXT,10,2,2,0xFFFF,0x0841,12:00:00")
-            self.cmd_queue.put("TXT,210,2,2,0x07FF,0x0841,WiFi")
-            self.cmd_queue.put("TXT,246,2,2,0x07E0,0x0841,SD")
-            self.cmd_queue.put("TXT,274,2,2,0x07E0,0x0841,AUTO")
-            # Row 2: Sun Smart + Program Name (y = 16..39)
-            self.cmd_queue.put("TXT,10,20,3,0x07FF,0x0841,Sun Smart")
-            self.cmd_queue.put("TXT,170,20,3,0xFFE0,0x0841,Standard Seal")
+            # Mobile Style Top Header (Home Screen: 32px, no Time/WiFi/SD/AUTO)
+            self.cmd_queue.put("RECT,0,0,320,32,0x0841,1")
+            self.cmd_queue.put("LINE,0,32,320,32,0x03EF")
+            self.cmd_queue.put("TXT,10,8,3,0x07FF,0x0841,Sun Smart")
+            self.cmd_queue.put("TXT,170,8,3,0xFFE0,0x0841,Standard Seal")
 
-            # Status Banner (y = 43..63, h = 20)
-            self.cmd_queue.put("RRECT,6,43,308,20,3,0x03E0,0")
-            self.cmd_queue.put("TXT,14,45,2,0x07E0,0x0000,READY (AUTO) - PRESS [START]")
+            # Status Banner (y = 36..56, h = 20)
+            self.cmd_queue.put("RRECT,6,36,308,20,3,0x03E0,0")
+            self.cmd_queue.put("TXT,14,38,2,0x07E0,0x0000,READY (AUTO) - PRESS [START]")
 
             # 4 Modern Cards (Outlines & Titles)
-            # Card 1: Heater 1 (y = 66..131, h = 65)
-            self.cmd_queue.put("RRECT,6,66,150,65,4,0x4A69,0")
-            self.cmd_queue.put("TXT,14,69,2,0x07FF,0x0000,HEATER 1")
-            self.cmd_queue.put("TXT,14,114,2,0xC618,0x0000,SET: 50.0 C")
+            # Card 1: Heater 1 (y = 60..128, h = 68)
+            self.cmd_queue.put("RRECT,6,60,150,68,4,0x4A69,0")
+            self.cmd_queue.put("TXT,14,63,2,0x07FF,0x0000,HEATER 1")
+            self.cmd_queue.put("TXT,14,111,2,0xC618,0x0000,SET: 50.0 C")
 
-            # Card 2: Heater 2 (y = 66..131, h = 65)
-            self.cmd_queue.put("RRECT,164,66,150,65,4,0x4A69,0")
-            self.cmd_queue.put("TXT,172,69,2,0x07FF,0x0000,HEATER 2")
-            self.cmd_queue.put("TXT,172,114,2,0xC618,0x0000,SET: 50.0 C")
+            # Card 2: Heater 2 (y = 60..128, h = 68)
+            self.cmd_queue.put("RRECT,164,60,150,68,4,0x4A69,0")
+            self.cmd_queue.put("TXT,172,63,2,0x07FF,0x0000,HEATER 2")
+            self.cmd_queue.put("TXT,172,111,2,0xC618,0x0000,SET: 50.0 C")
 
-            # Card 3: Torque (y = 135..200, h = 65)
-            self.cmd_queue.put("RRECT,6,135,150,65,4,0x4A69,0")
-            self.cmd_queue.put("TXT,14,138,2,0xFFE0,0x0000,TORQUE")
+            # Card 3: Torque (y = 132..201, h = 69)
+            self.cmd_queue.put("RRECT,6,132,150,69,4,0x4A69,0")
+            self.cmd_queue.put("TXT,14,135,2,0xFFE0,0x0000,TORQUE")
 
-            # Card 4: Timer (y = 135..200, h = 65)
-            self.cmd_queue.put("RRECT,164,135,150,65,4,0x4A69,0")
-            self.cmd_queue.put("TXT,172,138,2,0x07E0,0x0000,TIMER")
+            # Card 4: Timer (y = 132..201, h = 69)
+            self.cmd_queue.put("RRECT,164,132,150,69,4,0x4A69,0")
+            self.cmd_queue.put("TXT,172,135,2,0x07E0,0x0000,TIMER")
 
-            # Footer (y = 204..240)
-            self.cmd_queue.put("RECT,0,204,320,32,0x0841,1")
-            self.cmd_queue.put("LINE,0,204,320,204,0x03EF")
-            self.cmd_queue.put("TXT,10,212,2,0xFFFF,0x0841,[START]: Run")
-            self.cmd_queue.put("TXT,205,212,2,0xFFFF,0x0841,[->]: Menu")
+            # Footer (y = 206..236, h = 30) with Font 2 (smaller size)
+            self.cmd_queue.put("RECT,0,206,320,30,0x0841,1")
+            self.cmd_queue.put("LINE,0,206,320,206,0x03EF")
+            self.cmd_queue.put("TXT,10,213,2,0xFFFF,0x0841,[START]: Run")
+            self.cmd_queue.put("TXT,235,213,2,0xFFFF,0x0841,[->]: Menu")
             self.cmd_queue.put("RECT,0,236,320,4,0x03E0,1")
 
             t = 0.0
             timer_sec = 150
-            clock_sec = 12 * 3600
             while not self.sim_stop_event.is_set():
                 h1_act = 149.2 + 1.2 * math.sin(t * 0.8)
                 h2_act = 150.1 + 0.9 * math.cos(t * 0.7)
                 torque = max(0.0, 1.45 + 0.35 * math.sin(t * 1.2))
 
                 # Medium font (size 4) updates in-place
-                self.cmd_queue.put(f"TXT,14,82,4,0xFFFF,0x0000,{h1_act:.1f}")
-                self.cmd_queue.put("TXT,105,83,2,0xFFFF,0x0000,C")
+                self.cmd_queue.put(f"TXT,14,78,4,0xFFFF,0x0000,{h1_act:.1f}")
+                self.cmd_queue.put("TXT,105,79,2,0xFFFF,0x0000,C")
 
-                self.cmd_queue.put(f"TXT,172,82,4,0xFFFF,0x0000,{h2_act:.1f}")
-                self.cmd_queue.put("TXT,265,83,2,0xFFFF,0x0000,C")
+                self.cmd_queue.put(f"TXT,172,78,4,0xFFFF,0x0000,{h2_act:.1f}")
+                self.cmd_queue.put("TXT,265,79,2,0xFFFF,0x0000,C")
 
                 self.cmd_queue.put(f"TXT,14,158,4,0xFFFF,0x0000,{torque:.2f}")
                 self.cmd_queue.put("TXT,105,159,2,0xFFFF,0x0000,Nm")
@@ -1053,13 +1046,6 @@ class VirtualTFTApp(tk.Tk):
                 mm = timer_sec // 60
                 ss = timer_sec % 60
                 self.cmd_queue.put(f"TXT,172,158,4,0x07E0,0x0000,{mm:02d}:{ss:02d}")
-
-                # Live RTC Clock
-                cur_clock = (clock_sec + int(t)) % 86400
-                ch = cur_clock // 3600
-                cm = (cur_clock // 60) % 60
-                cs = cur_clock % 60
-                self.cmd_queue.put(f"TXT,10,2,2,0xFFFF,0x0841,{ch:02d}:{cm:02d}:{cs:02d}")
 
                 t += 0.2
                 if int(t * 5) % 5 == 0 and timer_sec > 0:

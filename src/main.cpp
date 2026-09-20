@@ -162,11 +162,11 @@ void setup() {
     // Actuator Pins (safe-checked)
     safePinMode(PIN_SSR_1, OUTPUT);
     safePinMode(PIN_SSR_2, OUTPUT);
-    safePinMode(PIN_MOTOR_DOWN, OUTPUT);
+    safePinMode(PIN_PNEUMATIC, OUTPUT);
     safePinMode(PIN_MOTOR_UP, OUTPUT);
     safeDigitalWrite(PIN_SSR_1, LOW);
     safeDigitalWrite(PIN_SSR_2, LOW);
-    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+    safeDigitalWrite(PIN_PNEUMATIC, LOW);
     safeDigitalWrite(PIN_MOTOR_UP, LOW);
 
     // Sensor & Switch Inputs (safe-checked: GPIO 34/35 are input-only with external pull-ups)

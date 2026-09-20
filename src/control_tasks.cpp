@@ -76,11 +76,7 @@ void Task_SafetyAndControl(void *pvParameters) {
         // Defensive array bounds clamping
         if (sysStatus.active_program_idx >= 10) sysStatus.active_program_idx = 0;
 
-        // Negative Case: Limit switch conflict (both active simultaneously indicates a hardware wiring fault)
-        if (sysStatus.down_limit_active && sysStatus.home_limit_active &&
-            sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_ALARM_FAULT) {
-            triggerSafetyShutdown("LIMIT SWITCH CONFLICT");
-        }
+        // Note: Upper limit switch is not used in pneumatic configuration (automatic return home).
 
 #if ENABLE_HX711
   #if INPUT_SERIAL_SIMULATOR
@@ -113,7 +109,7 @@ void Task_SafetyAndControl(void *pvParameters) {
         switch (sysStatus.currentState) {
             case STATE_IDLE:
             case STATE_READY:
-                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                safeDigitalWrite(PIN_PNEUMATIC, LOW);
                 safeDigitalWrite(PIN_MOTOR_UP, LOW);
                 break;
 
@@ -132,29 +128,29 @@ void Task_SafetyAndControl(void *pvParameters) {
 
             case STATE_MOVE_DOWN:
                 if (sysStatus.down_limit_active) {
-                    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                    // Down limit hit: Keep pneumatic ON continuously
+                    safeDigitalWrite(PIN_PNEUMATIC, HIGH);
                     transitionToState(STATE_DOWN_LIMIT);
                 } else {
-                    safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
-                    if (millis() - movement_timer_ms > (LIMIT_SWITCH_DOWN_TIMEOUT_SEC * 1000UL)) {
-                        // Timeout reached: stop motor and abort to fault to prevent heating in unknown position
+                    safeDigitalWrite(PIN_PNEUMATIC, HIGH);
+                    if (millis() - movement_timer_ms > (PNEUMATIC_DOWN_TIMEOUT_SEC * 1000UL)) {
+                        // Timeout reached without triggering down limit switch:
+                        // Turn off pneumatic so cylinder automatically returns to home.
+                        // Stop and move directly to READY state (not locked in fault).
+                        safeDigitalWrite(PIN_PNEUMATIC, LOW);
                         sysStatus.down_limit_fail_count++;
                         sysStatus.last_down_limit_fail_ms = millis();
                         
-                        char warningMsg[64];
-                        snprintf(warningMsg, sizeof(warningMsg), "Down limit timeout! Failures: %u", (unsigned)sysStatus.down_limit_fail_count);
-                        showLimitSwitchWarning(warningMsg);
-                        
-                        Serial.printf("[WARNING] Down limit switch not detected within %u s. Failure count: %u\n", 
-                                      (unsigned)LIMIT_SWITCH_DOWN_TIMEOUT_SEC, (unsigned)sysStatus.down_limit_fail_count);
-                        safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
-                        triggerSafetyShutdown("DOWN LIMIT TIMEOUT");
+                        showLimitSwitchWarning("Down limit timeout! Retracted.");
+                        Serial.printf("[WARNING] Down limit switch not detected within %u s. Pneumatic retracted to home.\n", 
+                                      (unsigned)PNEUMATIC_DOWN_TIMEOUT_SEC);
+                        transitionToState(STATE_READY);
                     }
                 }
                 break;
 
             case STATE_DOWN_LIMIT:
-                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                safeDigitalWrite(PIN_PNEUMATIC, HIGH);
                 if (sysStatus.forceStartActive || !sysStatus.start_mode_auto) {
                     // Force-start or Manual mode: do NOT wait for temp setpoint, proceed directly to timer
                     transitionToState(STATE_TEMPERATURE_READY);
@@ -164,8 +160,9 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_HEAT_TO_SETPOINT: {
+                safeDigitalWrite(PIN_PNEUMATIC, HIGH);
                 if (!sysStatus.down_limit_active) {
-                    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                    safeDigitalWrite(PIN_PNEUMATIC, LOW);
                     sysStatus.remaining_time_sec = 0;
                     showLimitSwitchWarning("Down limit opened during heating!");
                     snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
@@ -183,8 +180,9 @@ void Task_SafetyAndControl(void *pvParameters) {
             }
 
             case STATE_TEMPERATURE_READY:
+                safeDigitalWrite(PIN_PNEUMATIC, HIGH);
                 if (!sysStatus.down_limit_active) {
-                    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                    safeDigitalWrite(PIN_PNEUMATIC, LOW);
                     sysStatus.remaining_time_sec = 0;
                     showLimitSwitchWarning("Down limit opened before timer!");
                     snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
@@ -198,10 +196,10 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_PROCESS_TIMER:
+                // Keep pneumatic ON until timer expired!
+                safeDigitalWrite(PIN_PNEUMATIC, HIGH);
                 if (!sysStatus.down_limit_active) {
-                    // Down limit switch deactivated while process timer is running!
-                    // Heater has its own independent switch - do not take any action on heater/SSRs
-                    safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                    safeDigitalWrite(PIN_PNEUMATIC, LOW);
                     sysStatus.remaining_time_sec = 0;
                     showLimitSwitchWarning("Down limit switch opened!");
                     snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
@@ -216,38 +214,25 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_TIMER_COMPLETE:
+                // Timer expired: turn OFF SSRs and turn OFF pneumatic (cylinder returns home)
                 safeDigitalWrite(PIN_SSR_1, LOW);
                 safeDigitalWrite(PIN_SSR_2, LOW);
+                safeDigitalWrite(PIN_PNEUMATIC, LOW);
                 movement_timer_ms = millis();
                 transitionToState(STATE_MOVE_UP);
                 break;
 
             case STATE_MOVE_UP:
-                if (sysStatus.home_limit_active) {
-                    safeDigitalWrite(PIN_MOTOR_UP, LOW);
-                    transitionToState(STATE_HOME_LIMIT);
-                } else {
-                    safeDigitalWrite(PIN_MOTOR_UP, HIGH);
-                    if (millis() - movement_timer_ms > (LIMIT_SWITCH_HOME_TIMEOUT_SEC * 1000UL)) {
-                        // Timeout reached: stop motor and proceed to next stage
-                        // Track failure and provide warning
-                        sysStatus.home_limit_fail_count++;
-                        sysStatus.last_home_limit_fail_ms = millis();
-                        
-                        char warningMsg[64];
-                        snprintf(warningMsg, sizeof(warningMsg), "Home limit timeout! Failures: %u", (unsigned)sysStatus.home_limit_fail_count);
-                        showLimitSwitchWarning(warningMsg);
-                        
-                        Serial.printf("[WARNING] Home limit switch not detected within %u s. Failure count: %u\n", 
-                                      (unsigned)LIMIT_SWITCH_HOME_TIMEOUT_SEC, (unsigned)sysStatus.home_limit_fail_count);
-                        safeDigitalWrite(PIN_MOTOR_UP, LOW);
-                        transitionToState(STATE_HOME_LIMIT);
-                    }
+                // Pneumatic is OFF (LOW); cylinder automatically retracts to home via spring/exhaust.
+                // No upper limit switch needed; wait for retraction settle delay.
+                safeDigitalWrite(PIN_PNEUMATIC, LOW);
+                if (millis() - movement_timer_ms >= PNEUMATIC_RETRACT_DELAY_MS) {
+                    transitionToState(STATE_SAVE_RECORD);
                 }
                 break;
 
             case STATE_HOME_LIMIT:
-                safeDigitalWrite(PIN_MOTOR_UP, LOW);
+                safeDigitalWrite(PIN_PNEUMATIC, LOW);
                 transitionToState(STATE_SAVE_RECORD);
                 break;
 
@@ -286,7 +271,7 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_ALARM_FAULT:
-                safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+                safeDigitalWrite(PIN_PNEUMATIC, LOW);
                 safeDigitalWrite(PIN_MOTOR_UP, LOW);
                 safeDigitalWrite(PIN_SSR_1, LOW);
                 safeDigitalWrite(PIN_SSR_2, LOW);

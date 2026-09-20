@@ -8,7 +8,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v3.0"
+#define FIRMWARE_VERSION "v3.1"
 #endif
 
 // Enable WiFi & WebServer support (set to 0 for bench testing to save ~500 KB flash)
@@ -153,11 +153,12 @@ extern bool g_simHomeLimit;
 #define PIN_BTN_OK 26
 #define PIN_BTN_LEFT 27
 
-// SSR & Motor Actuator Outputs
+// SSR & Pneumatic Actuator Outputs
 #define PIN_SSR_1 16
 #define PIN_SSR_2 17
-#define PIN_MOTOR_DOWN 21
-#define PIN_MOTOR_UP 22
+#define PIN_PNEUMATIC 21       // Solenoid valve output for pneumatic cylinder
+#define PIN_MOTOR_DOWN PIN_PNEUMATIC // Compatibility alias
+#define PIN_MOTOR_UP 22        // Unused in pneumatic configuration
 
 // PT100 Constants & Wire Mode
 #ifndef MAX31865_WIRE_MODE
@@ -181,13 +182,17 @@ extern bool g_simHomeLimit;
 #define RECIPE_MAGIC 0xABCD
 #define RECIPE_VERSION 4
 
-// Limit switch timeouts (seconds). When moving up/down, if the corresponding
-// limit switch is not detected within this timeout the controller will stop the
-// motor and proceed to the next logical state (instead of triggering a hard
-// safety shutdown). Separate timeouts for down and home limit switches for
-// better control.
+// Pneumatic Cylinder Timeouts & Delays
+#ifndef PNEUMATIC_DOWN_TIMEOUT_SEC
+#define PNEUMATIC_DOWN_TIMEOUT_SEC 15 // Timeout for pneumatic cylinder to reach down limit switch
+#endif
+
+#ifndef PNEUMATIC_RETRACT_DELAY_MS
+#define PNEUMATIC_RETRACT_DELAY_MS 1000 // Retraction settling time before saving record
+#endif
+
 #ifndef LIMIT_SWITCH_DOWN_TIMEOUT_SEC
-#define LIMIT_SWITCH_DOWN_TIMEOUT_SEC 30
+#define LIMIT_SWITCH_DOWN_TIMEOUT_SEC PNEUMATIC_DOWN_TIMEOUT_SEC
 #endif
 
 #ifndef LIMIT_SWITCH_HOME_TIMEOUT_SEC

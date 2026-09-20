@@ -121,11 +121,30 @@ static void getCurrentTimeString(char *timeBuf, size_t timeBufLen) {
 }
 
 void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELLOW) {
-    // 1. Header Background (y = 0..40, h = 40)
+    if (currentScreen == SCREEN_HOME) {
+        // Home Screen Header: Compact 32px height, no Time/WiFi/SD/AUTO
+        tft.fillRect(0, 0, 320, 32, 0x0841); // Dark charcoal
+        tft.drawFastHLine(0, 32, 320, TFT_DARKCYAN);
+
+        tft.setFreeFont(FONT_FREE_BOLD_12);
+        tft.setTextColor(TFT_CYAN, 0x0841);
+        tft.drawString("Sun Smart", 10, 8);
+
+        if (rightBadgeText && rightBadgeText[0]) {
+            tft.setTextColor(badgeColor, 0x0841);
+            tft.setTextPadding(140);
+            tft.drawString(rightBadgeText, 170, 8);
+            tft.setTextPadding(0);
+        }
+        tft.setFreeFont(FONT_FREE_BOLD_9);
+        return;
+    }
+
+    // Setting Mode & Sub-screens Header: Full 40px height with Status Bar (y = 0..40, h = 40)
     tft.fillRect(0, 0, 320, 40, 0x0841); // Dark charcoal
     tft.drawFastHLine(0, 40, 320, TFT_DARKCYAN);
 
-    // 2. Status Bar Row (y = 0..16)
+    // Status Bar Row (y = 0..16)
     char timeStr[16];
     getCurrentTimeString(timeStr, sizeof(timeStr));
     tft.setFreeFont(FONT_FREE_BOLD_9);
@@ -152,7 +171,7 @@ void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELL
 #endif
     tft.drawString("WiFi", badgeX, 2);
 
-    // 3. App Bar Row (y = 16..39)
+    // App Bar Row (y = 16..39)
     tft.setFreeFont(FONT_FREE_BOLD_12);
     tft.setTextColor(TFT_CYAN, 0x0841);
     tft.drawString("Sun Smart", 10, 20);
@@ -485,7 +504,7 @@ void handleButtonInputs() {
             // Machine cycle is actively running: STOP cycle immediately
             safeDigitalWrite(PIN_SSR_1, LOW);
             safeDigitalWrite(PIN_SSR_2, LOW);
-            safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
+            safeDigitalWrite(PIN_PNEUMATIC, LOW);
             safeDigitalWrite(PIN_MOTOR_UP, LOW);
             sysStatus.remaining_time_sec = 0;
             sysStatus.forceStartActive = false;
@@ -946,37 +965,37 @@ void drawHomeScreen(bool fullRedraw) {
         drawMobileHeader(recipes[sysStatus.active_program_idx].name, TFT_YELLOW);
 
         // 4 Modern Information Cards (Outlines & Headers)
-        // Card 1: Heater 1 (Top-Left: x=6, y=66, w=150, h=65)
-        tft.drawRoundRect(6, 66, 150, 65, 4, 0x4A69);
+        // Card 1: Heater 1 (Top-Left: x=6, y=60, w=150, h=68)
+        tft.drawRoundRect(6, 60, 150, 68, 4, 0x4A69);
         tft.setTextColor(TFT_CYAN, TFT_BLACK);
-        tft.drawString("HEATER 1", 14, 69);
+        tft.drawString("HEATER 1", 14, 63);
 #if !ENABLE_H1
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString("DISABLED", 14, 88);
+        tft.drawString("DISABLED", 14, 82);
 #endif
 
-        // Card 2: Heater 2 (Top-Right: x=164, y=66, w=150, h=65)
-        tft.drawRoundRect(164, 66, 150, 65, 4, 0x4A69);
+        // Card 2: Heater 2 (Top-Right: x=164, y=60, w=150, h=68)
+        tft.drawRoundRect(164, 60, 150, 68, 4, 0x4A69);
         tft.setTextColor(TFT_CYAN, TFT_BLACK);
-        tft.drawString("HEATER 2", 172, 69);
+        tft.drawString("HEATER 2", 172, 63);
 #if !ENABLE_H2
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString("DISABLED", 172, 88);
+        tft.drawString("DISABLED", 172, 82);
 #endif
 
-        // Card 3: Torque (Bottom-Left: x=6, y=135, w=150, h=65)
-        tft.drawRoundRect(6, 135, 150, 65, 4, 0x4A69);
+        // Card 3: Torque (Bottom-Left: x=6, y=132, w=150, h=69)
+        tft.drawRoundRect(6, 132, 150, 69, 4, 0x4A69);
         tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-        tft.drawString("TORQUE", 14, 138);
+        tft.drawString("TORQUE", 14, 135);
 
-        // Card 4: Process Timer (Bottom-Right: x=164, y=135, w=150, h=65)
-        tft.drawRoundRect(164, 135, 150, 65, 4, 0x4A69);
+        // Card 4: Process Timer (Bottom-Right: x=164, y=132, w=150, h=69)
+        tft.drawRoundRect(164, 132, 150, 69, 4, 0x4A69);
         tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.drawString("TIMER", 172, 138);
+        tft.drawString("TIMER", 172, 135);
 
         // Footer Navigation Bar (initial background)
-        tft.fillRect(0, 204, 320, 32, 0x0841);
-        tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
+        tft.fillRect(0, 206, 320, 30, 0x0841);
+        tft.drawFastHLine(0, 206, 320, TFT_DARKCYAN);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -988,13 +1007,13 @@ void drawHomeScreen(bool fullRedraw) {
         tft.setFreeFont(FONT_FREE_BOLD_12);
         tft.setTextColor(TFT_YELLOW, 0x0841);
         tft.setTextPadding(140);
-        tft.drawString(pgmBuf, 170, 20);
+        tft.drawString(pgmBuf, 170, 8);
         tft.setTextPadding(0);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         last_prog_idx = sysStatus.active_program_idx;
     }
 
-    // 3. Status Banner Card (y=43..63, h=20)
+    // 3. Status Banner Card (y=36..56, h=20)
     static ProcessState_t last_state = (ProcessState_t)0xFF;
     static bool last_boot_ok = true;
     static bool last_start_mode = false;
@@ -1016,7 +1035,7 @@ void drawHomeScreen(bool fullRedraw) {
                 statusTextColor = TFT_YELLOW;
                 break;
             case STATE_MOVE_DOWN:
-                statusLine = "MOTOR: MOVING DOWN";
+                statusLine = "PNEUMATIC: EXTENDING...";
                 statusBorder = TFT_CYAN;
                 statusTextColor = TFT_CYAN;
                 break;
@@ -1041,12 +1060,12 @@ void drawHomeScreen(bool fullRedraw) {
                 statusTextColor = TFT_GREEN;
                 break;
             case STATE_TIMER_COMPLETE:
-                statusLine = "TIMER COMPLETE - MOVING UP";
+                statusLine = "TIMER COMPLETE - RETRACTING";
                 statusBorder = TFT_CYAN;
                 statusTextColor = TFT_CYAN;
                 break;
             case STATE_MOVE_UP:
-                statusLine = "MOTOR: MOVING UP TO HOME";
+                statusLine = "RETRACTING TO HOME...";
                 statusBorder = TFT_CYAN;
                 statusTextColor = TFT_CYAN;
                 break;
@@ -1075,12 +1094,12 @@ void drawHomeScreen(bool fullRedraw) {
             statusTextColor = TFT_RED;
         }
 
-        tft.drawRoundRect(6, 43, 308, 20, 3, statusBorder);
-        tft.fillRect(7, 44, 306, 18, TFT_BLACK);
+        tft.drawRoundRect(6, 36, 308, 20, 3, statusBorder);
+        tft.fillRect(7, 37, 306, 18, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(statusTextColor, TFT_BLACK);
         tft.setTextPadding(296);
-        tft.drawString(statusLine, 14, 45);
+        tft.drawString(statusLine, 14, 38);
         tft.setTextPadding(0);
 
         last_state = sysStatus.currentState;
@@ -1093,19 +1112,19 @@ void drawHomeScreen(bool fullRedraw) {
     static int last_h1_act_tenth = -99999;
     int cur_h1_act_tenth = (int)roundf(sysStatus.h1_actual_c * 10.0f);
     if (fullRedraw || cur_h1_act_tenth != last_h1_act_tenth) {
-        tft.fillRect(10, 81, 140, 28, TFT_BLACK);
+        tft.fillRect(10, 77, 140, 28, TFT_BLACK);
         if (isnan(sysStatus.h1_actual_c) || sysStatus.h1_actual_c < -45.0f) {
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_RED, TFT_BLACK);
-            tft.drawString("FAULT", 14, 82);
+            tft.drawString("FAULT", 14, 78);
         } else {
             char valBuf[16];
             snprintf(valBuf, sizeof(valBuf), "%.1f", sysStatus.h1_actual_c);
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.drawString(valBuf, 14, 82);
+            tft.drawString(valBuf, 14, 78);
             tft.setFreeFont(FONT_FREE_BOLD_9);
-            tft.drawString("C", 105, 83);
+            tft.drawString("C", 105, 79);
         }
         last_h1_act_tenth = cur_h1_act_tenth;
     }
@@ -1115,10 +1134,10 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || cur_h1_set_tenth != last_h1_set_tenth) {
         char setBuf[32];
         snprintf(setBuf, sizeof(setBuf), "SET: %.1f C", recipes[sysStatus.active_program_idx].h1_setpoint_c);
-        tft.fillRect(10, 112, 140, 16, TFT_BLACK);
+        tft.fillRect(10, 109, 140, 16, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(setBuf, 14, 114);
+        tft.drawString(setBuf, 14, 111);
         last_h1_set_tenth = cur_h1_set_tenth;
     }
 #endif
@@ -1128,19 +1147,19 @@ void drawHomeScreen(bool fullRedraw) {
     static int last_h2_act_tenth = -99999;
     int cur_h2_act_tenth = (int)roundf(sysStatus.h2_actual_c * 10.0f);
     if (fullRedraw || cur_h2_act_tenth != last_h2_act_tenth) {
-        tft.fillRect(168, 81, 140, 28, TFT_BLACK);
+        tft.fillRect(168, 77, 140, 28, TFT_BLACK);
         if (isnan(sysStatus.h2_actual_c) || sysStatus.h2_actual_c < -45.0f) {
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_RED, TFT_BLACK);
-            tft.drawString("FAULT", 172, 82);
+            tft.drawString("FAULT", 172, 78);
         } else {
             char valBuf[16];
             snprintf(valBuf, sizeof(valBuf), "%.1f", sysStatus.h2_actual_c);
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.drawString(valBuf, 172, 82);
+            tft.drawString(valBuf, 172, 78);
             tft.setFreeFont(FONT_FREE_BOLD_9);
-            tft.drawString("C", 265, 83);
+            tft.drawString("C", 265, 79);
         }
         last_h2_act_tenth = cur_h2_act_tenth;
     }
@@ -1150,10 +1169,10 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || cur_h2_set_tenth != last_h2_set_tenth) {
         char setBuf[32];
         snprintf(setBuf, sizeof(setBuf), "SET: %.1f C", recipes[sysStatus.active_program_idx].h2_setpoint_c);
-        tft.fillRect(168, 112, 140, 16, TFT_BLACK);
+        tft.fillRect(168, 109, 140, 16, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(setBuf, 172, 114);
+        tft.drawString(setBuf, 172, 111);
         last_h2_set_tenth = cur_h2_set_tenth;
     }
 #endif
@@ -1197,25 +1216,26 @@ void drawHomeScreen(bool fullRedraw) {
         last_remaining = sysStatus.remaining_time_sec;
     }
 
-    // 8. Footer Navigation Bar Dynamic Update (Running vs Idle)
+    // 8. Footer Navigation Bar Dynamic Update (Running vs Idle) using compact Font 2
     static int last_running_footer = -1;
     bool is_running = (sysStatus.currentState != STATE_IDLE && 
                        sysStatus.currentState != STATE_READY && 
                        sysStatus.currentState != STATE_ALARM_FAULT);
     if (fullRedraw || (int)is_running != last_running_footer) {
-        tft.fillRect(0, 204, 320, 32, 0x0841);
-        tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.fillRect(0, 206, 320, 30, 0x0841);
+        tft.drawFastHLine(0, 206, 320, TFT_DARKCYAN);
+        tft.setTextFont(2);
         if (is_running) {
             tft.setTextColor(TFT_RED, 0x0841);
-            tft.drawString("[STOP]: Stop Cycle", 10, 212);
+            tft.drawString("[STOP]: Stop Cycle", 10, 213);
             tft.setTextColor(0x7BEF, 0x0841); // Dimmed grey
-            tft.drawString("[MENU]: Locked", 175, 212);
+            tft.drawString("[MENU]: Locked", 210, 213);
         } else {
             tft.setTextColor(TFT_WHITE, 0x0841);
-            tft.drawString("[START]: Run", 10, 212);
-            tft.drawString("[->]: Menu", 205, 212);
+            tft.drawString("[START]: Run", 10, 213);
+            tft.drawString("[->]: Menu", 235, 213);
         }
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         last_running_footer = (int)is_running;
     }
 
@@ -2222,16 +2242,18 @@ void updateTFTDisplay() {
             break;
     }
 
-    // 1-second live RTC clock update in mobile header when no popup is active
+    // 1-second live RTC clock update in mobile header (only in setting/sub-screens, not on home)
     static uint32_t s_lastClockSec = 0xFFFFFFFF;
     uint32_t curClockSec = millis() / 1000;
     if (!hasPopup && curClockSec != s_lastClockSec) {
-        char timeStr[16];
-        getCurrentTimeString(timeStr, sizeof(timeStr));
-        tft.setFreeFont(FONT_FREE_BOLD_9);
-        tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.fillRect(10, 2, 85, 16, 0x0841);
-        tft.drawString(timeStr, 10, 2);
+        if (currentScreen != SCREEN_HOME) {
+            char timeStr[16];
+            getCurrentTimeString(timeStr, sizeof(timeStr));
+            tft.setFreeFont(FONT_FREE_BOLD_9);
+            tft.setTextColor(TFT_WHITE, 0x0841);
+            tft.fillRect(10, 2, 85, 16, 0x0841);
+            tft.drawString(timeStr, 10, 2);
+        }
         s_lastClockSec = curClockSec;
     }
 
