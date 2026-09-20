@@ -998,9 +998,11 @@ class VirtualTFTApp(tk.Tk):
 
             # Top Status & Recipe Bar (y = 2..22, h = 20)
             self.cmd_queue.put("RRECT,6,2,308,20,3,0x03E0,0")
-            self.cmd_queue.put("TXT,12,4,2,0xFFE0,0x0000,Standard Seal")
-            self.cmd_queue.put("TXT,128,4,2,0x03EF,0x0000,|")
-            self.cmd_queue.put("TXT,140,4,2,0x07E0,0x0000,READY (AUTO)")
+            self.cmd_queue.put("TXT,12,4,2,0x07FF,0x0000,SUN SMART")
+            self.cmd_queue.put("TXT,95,4,2,0x03EF,0x0000,|")
+            self.cmd_queue.put("TXT,105,4,2,0xFFE0,0x0000,Standard Seal")
+            self.cmd_queue.put("TXT,205,4,2,0x03EF,0x0000,|")
+            self.cmd_queue.put("TXT,215,4,2,0x07E0,0x0000,READY (AUTO)")
 
             # 4 Modern Cards (Outlines & Titles)
             # Card 1: Heater 1 (y = 26..110, h = 84)

@@ -326,6 +326,42 @@ void handleButtonInputs() {
     bool btnLeft  = justPressed[BTN_IDX_LEFT];
     bool btnRight = justPressed[BTN_IDX_RIGHT];
 
+    // 2-Second Hold Detection for RIGHT (Save) and LEFT (Cancel)
+    bool btnRightHold2s = false;
+    bool btnLeftHold2s  = false;
+
+    static uint32_t s_rightHoldStart = 0;
+    static bool s_rightHoldFired = false;
+    if (s_stableState[BTN_IDX_RIGHT]) {
+        if (s_rightHoldStart == 0) s_rightHoldStart = now;
+        if (!s_rightHoldFired && (now - s_rightHoldStart >= 2000)) {
+            btnRightHold2s = true;
+            s_rightHoldFired = true;
+        }
+    } else {
+        s_rightHoldStart = 0;
+        s_rightHoldFired = false;
+    }
+
+    static uint32_t s_leftHoldStart = 0;
+    static bool s_leftHoldFired = false;
+    if (s_stableState[BTN_IDX_LEFT]) {
+        if (s_leftHoldStart == 0) s_leftHoldStart = now;
+        if (!s_leftHoldFired && (now - s_leftHoldStart >= 2000)) {
+            btnLeftHold2s = true;
+            s_leftHoldFired = true;
+        }
+    } else {
+        s_leftHoldStart = 0;
+        s_leftHoldFired = false;
+    }
+
+    // If both LEFT and RIGHT are held for 2s (or left+right combo): Cancel
+    if (btnLeftHold2s && btnRightHold2s) {
+        btnLeftHold2s = true;
+        btnRightHold2s = false;
+    }
+
     bool rawUp = false;
     bool rawDown = false;
 #if ENABLE_PHYSICAL_BUTTONS
@@ -413,6 +449,14 @@ void handleButtonInputs() {
             case '3': btnLeft = true; break;
             case '4': btnRight = true; break;
             case '5': btnOk = true; break;
+            case 's':
+            case 'S':
+                btnRightHold2s = true; // Serial shortcut: Save Name
+                break;
+            case 'c':
+            case 'C':
+                btnLeftHold2s = true;  // Serial shortcut: Cancel Name
+                break;
             case 'e':
             case 'E':
                 sysStatus.emergency_stop_active = true;
@@ -445,7 +489,7 @@ void handleButtonInputs() {
         btnOk = false;
     }
 
-    if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk) return;
+    if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk && !btnRightHold2s && !btnLeftHold2s) return;
 
     // Button 5 (btnOk): Exclusively START / STOP machine cycle operation
     if (btnOk) {
@@ -553,16 +597,6 @@ void handleButtonInputs() {
             if (btnRight) {
                 currentScreen = SCREEN_SETTINGS_MENU;
                 settingsMenuIdx = 0;
-            } else if (btnUp) {
-                if (sysStatus.active_program_idx > 0) {
-                    sysStatus.active_program_idx--;
-                    saveActiveProgramToNVS(sysStatus.active_program_idx);
-                }
-            } else if (btnDown) {
-                if (sysStatus.active_program_idx < 9) {
-                    sysStatus.active_program_idx++;
-                    saveActiveProgramToNVS(sysStatus.active_program_idx);
-                }
             }
             break;
         }
@@ -779,78 +813,51 @@ void handleButtonInputs() {
             static const char s_charset[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
             static const size_t s_charsetLen = sizeof(s_charset) - 1;
 
-            if (s_nameFocus == 0) {
-                // Character slot editing
-                char curChar = s_nameEditBuf[s_nameSlotIdx];
-                const char* p = strchr(s_charset, curChar);
-                int charIdx = (p != NULL) ? (int)(p - s_charset) : 0;
+            // 1. Hold Right 2 sec: SAVE immediately without moving to save option
+            if (btnRightHold2s) {
+                int lastNonSpace = 11;
+                while (lastNonSpace >= 0 && s_nameEditBuf[lastNonSpace] == ' ') lastNonSpace--;
+                if (lastNonSpace < 0) {
+                    snprintf(recipes[sysStatus.active_program_idx].name, sizeof(recipes[0].name), "Program %02d", sysStatus.active_program_idx + 1);
+                } else {
+                    s_nameEditBuf[lastNonSpace + 1] = '\0';
+                    strncpy(recipes[sysStatus.active_program_idx].name, s_nameEditBuf, sizeof(recipes[0].name) - 1);
+                    recipes[sysStatus.active_program_idx].name[sizeof(recipes[0].name) - 1] = '\0';
+                }
+                saveRecipeToNVS(sysStatus.active_program_idx);
+                currentScreen = SCREEN_RECIPE_EDIT;
+                break;
+            }
 
-                if (btnUp) {
-                    charIdx = (charIdx + 1) % s_charsetLen;
-                    s_nameEditBuf[s_nameSlotIdx] = s_charset[charIdx];
-                } else if (btnDown) {
-                    charIdx = (charIdx == 0) ? (s_charsetLen - 1) : (charIdx - 1);
-                    s_nameEditBuf[s_nameSlotIdx] = s_charset[charIdx];
-                } else if (btnRight) {
-                    if (s_nameSlotIdx < 11) {
-                        s_nameSlotIdx++;
-                    } else {
-                        s_nameFocus = 1; // Move to [SAVE]
-                    }
-                } else if (btnLeft) {
-                    if (s_nameSlotIdx > 0) {
-                        s_nameSlotIdx--;
-                    } else {
-                        s_nameFocus = 2; // Move to [CANCEL]
-                    }
-                }
-            } else if (s_nameFocus == 1) { // [SAVE]
-                if (btnUp) {
-                    s_nameFocus = 0;
-                } else if (btnDown) {
-                    s_nameFocus = 2; // [CANCEL]
-                } else if (btnLeft) {
-                    s_nameFocus = 0;
-                    s_nameSlotIdx = 11;
-                } else if (btnRight) {
-                    // [SAVE] Action execution:
-                    int lastNonSpace = 11;
-                    while (lastNonSpace >= 0 && s_nameEditBuf[lastNonSpace] == ' ') lastNonSpace--;
-                    if (lastNonSpace < 0) {
-                        snprintf(recipes[sysStatus.active_program_idx].name, sizeof(recipes[0].name), "Program %02d", sysStatus.active_program_idx + 1);
-                    } else {
-                        s_nameEditBuf[lastNonSpace + 1] = '\0';
-                        strncpy(recipes[sysStatus.active_program_idx].name, s_nameEditBuf, sizeof(recipes[0].name) - 1);
-                        recipes[sysStatus.active_program_idx].name[sizeof(recipes[0].name) - 1] = '\0';
-                    }
-                    saveRecipeToNVS(sysStatus.active_program_idx);
-                    currentScreen = SCREEN_RECIPE_EDIT;
-                }
-            } else if (s_nameFocus == 2) { // [CANCEL]
-                if (btnUp) {
-                    s_nameFocus = 1; // [SAVE]
-                } else if (btnDown) {
-                    s_nameFocus = 3; // [CLEAR]
-                } else if (btnLeft) {
-                    s_nameFocus = 1; // [SAVE]
-                } else if (btnRight) {
-                    // [CANCEL] Action execution: return without saving
-                    currentScreen = SCREEN_RECIPE_EDIT;
-                }
-            } else if (s_nameFocus == 3) { // [CLEAR]
-                if (btnUp) {
-                    s_nameFocus = 2; // [CANCEL]
-                } else if (btnDown) {
-                    s_nameFocus = 1; // [SAVE]
-                } else if (btnLeft) {
-                    s_nameFocus = 2; // [CANCEL]
-                } else if (btnRight) {
-                    // [CLEAR] Action execution:
-                    memset(s_nameEditBuf, ' ', 12);
-                    s_nameEditBuf[12] = '\0';
-                    s_nameSlotIdx = 0;
-                    s_nameFocus = 0;
-                }
+            // 2. Hold Left 2 sec (or Left+Right 2 sec): CANCEL operation immediately
+            if (btnLeftHold2s) {
+                currentScreen = SCREEN_RECIPE_EDIT;
+                break;
+            }
+
+            // 3. Button OK: Clear all characters
+            if (btnOk) {
+                memset(s_nameEditBuf, ' ', 12);
+                s_nameEditBuf[12] = '\0';
+                s_nameSlotIdx = 0;
+                break;
+            }
+
+            // 4. Character slot editing (stay in slots 0..11, wrapping smoothly)
+            char curChar = s_nameEditBuf[s_nameSlotIdx];
+            const char* p = strchr(s_charset, curChar);
+            int charIdx = (p != NULL) ? (int)(p - s_charset) : 0;
+
+            if (btnUp) {
+                charIdx = (charIdx + 1) % s_charsetLen;
+                s_nameEditBuf[s_nameSlotIdx] = s_charset[charIdx];
+            } else if (btnDown) {
+                charIdx = (charIdx == 0) ? (s_charsetLen - 1) : (charIdx - 1);
+                s_nameEditBuf[s_nameSlotIdx] = s_charset[charIdx];
+            } else if (btnRight) {
+                s_nameSlotIdx = (s_nameSlotIdx + 1) % 12; // Next slot, wraps 0..11
+            } else if (btnLeft) {
+                s_nameSlotIdx = (s_nameSlotIdx == 0) ? 11 : (s_nameSlotIdx - 1); // Prev slot, wraps 0..11
             }
             break;
         }
@@ -1096,21 +1103,31 @@ void drawHomeScreen(bool fullRedraw) {
         tft.fillRect(7, 3, 306, 18, TFT_BLACK);
 
         tft.setTextFont(2);
-        // Left: Active Program Name
+        // 1. Left: SUN SMART
+        tft.setTextColor(TFT_CYAN, TFT_BLACK);
+        tft.drawString("SUN SMART", 12, 4);
+        int16_t brandW = tft.textWidth("SUN SMART", 2);
+        int16_t div1X = 12 + brandW + 6;
+
+        // Divider 1
+        tft.setTextColor(TFT_DARKCYAN, TFT_BLACK);
+        tft.drawString("|", div1X, 4);
+
+        // 2. Middle: Active Program Name
         tft.setTextColor(TFT_YELLOW, TFT_BLACK);
         char pgmBuf[24];
         snprintf(pgmBuf, sizeof(pgmBuf), "%s", recipes[sysStatus.active_program_idx].name);
-        tft.drawString(pgmBuf, 12, 4);
+        tft.drawString(pgmBuf, div1X + 8, 4);
         int16_t nameW = tft.textWidth(pgmBuf, 2);
-        int16_t divX = 12 + nameW + 6;
+        int16_t div2X = div1X + 8 + nameW + 6;
 
-        // Divider
+        // Divider 2
         tft.setTextColor(TFT_DARKCYAN, TFT_BLACK);
-        tft.drawString("|", divX, 4);
+        tft.drawString("|", div2X, 4);
 
-        // Right: Status
+        // 3. Right: Status
         tft.setTextColor(statusTextColor, TFT_BLACK);
-        tft.drawString(statusLine, divX + 10, 4);
+        tft.drawString(statusLine, div2X + 8, 4);
 
         tft.setFreeFont(FONT_FREE_BOLD_9);
 
@@ -1700,8 +1717,8 @@ void drawProgramNameEditScreen(bool fullRedraw) {
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
         tft.setTextColor(TFT_WHITE, 0x0841);
         tft.drawString("[UP/DN] Char", 10, 212);
-        tft.drawString("[->] Next/Do", 130, 212);
-        tft.drawString("[<-] Prev/Back", 215, 212);
+        tft.drawString("Hold [->] 2s: Save", 115, 212);
+        tft.drawString("Hold [<-] 2s: Cancel", 215, 212);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -1717,7 +1734,7 @@ void drawProgramNameEditScreen(bool fullRedraw) {
     tft.fillRect(startX, slotY + slotH + 2, 297, 14, TFT_BLACK);
 
     for (int i = 0; i < 12; i++) {
-        bool isSlot = (s_nameFocus == 0 && s_nameSlotIdx == i);
+        bool isSlot = (s_nameSlotIdx == i);
         int curX = startX + i * (slotW + gap);
 
         tft.drawRoundRect(curX, slotY, slotW, slotH, 3, isSlot ? TFT_YELLOW : 0x4A69);
@@ -1741,29 +1758,19 @@ void drawProgramNameEditScreen(bool fullRedraw) {
         tft.drawString(cStr, curX + 6, slotY + 9);
     }
 
-    // Action Buttons: [SAVE], [CANCEL], [CLEAR] (y=155..187)
-    bool isSave = (s_nameFocus == 1);
-    bool isCancel = (s_nameFocus == 2);
-    bool isClear = (s_nameFocus == 3);
-
-    // Save Button (x=15, w=85, h=32)
-    tft.drawRoundRect(15, 155, 85, 32, 4, isSave ? TFT_GREEN : 0x4A69);
-    tft.fillRect(16, 156, 83, 30, isSave ? 0x10C2 : TFT_BLACK);
+    // Action Cards: [HOLD -> 2s: SAVE], [HOLD <- 2s: CANCEL] (y=155..187)
+    // Save Card (x=14, w=140, h=32)
+    tft.drawRoundRect(14, 155, 140, 32, 4, TFT_GREEN);
+    tft.fillRect(15, 156, 138, 30, 0x10C2);
     tft.setFreeFont(FONT_FREE_BOLD_9);
-    tft.setTextColor(isSave ? TFT_GREEN : TFT_WHITE, isSave ? 0x10C2 : TFT_BLACK);
-    tft.drawString("SAVE", 35, 162);
+    tft.setTextColor(TFT_GREEN, 0x10C2);
+    tft.drawString("HOLD [->] 2s: SAVE", 18, 162);
 
-    // Cancel Button (x=115, w=85, h=32)
-    tft.drawRoundRect(115, 155, 85, 32, 4, isCancel ? TFT_RED : 0x4A69);
-    tft.fillRect(116, 156, 83, 30, isCancel ? 0x3000 : TFT_BLACK);
-    tft.setTextColor(isCancel ? TFT_RED : TFT_LIGHTGREY, isCancel ? 0x3000 : TFT_BLACK);
-    tft.drawString("CANCEL", 123, 162);
-
-    // Clear Button (x=215, w=85, h=32)
-    tft.drawRoundRect(215, 155, 85, 32, 4, isClear ? TFT_YELLOW : 0x4A69);
-    tft.fillRect(216, 156, 83, 30, isClear ? 0x2100 : TFT_BLACK);
-    tft.setTextColor(isClear ? TFT_YELLOW : TFT_LIGHTGREY, isClear ? 0x2100 : TFT_BLACK);
-    tft.drawString("CLEAR", 230, 162);
+    // Cancel Card (x=166, w=140, h=32)
+    tft.drawRoundRect(166, 155, 140, 32, 4, TFT_RED);
+    tft.fillRect(167, 156, 138, 30, 0x3000);
+    tft.setTextColor(TFT_RED, 0x3000);
+    tft.drawString("HOLD [<-] 2s: CANCEL", 170, 162);
 
     strncpy(last_buf, s_nameEditBuf, sizeof(last_buf) - 1);
     last_slot = s_nameSlotIdx;
