@@ -139,15 +139,18 @@ void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELL
     tft.fillRect(0, 0, 320, 40, 0x0841); // Dark charcoal
     tft.drawFastHLine(0, 40, 320, TFT_DARKCYAN);
 
-    // Status Bar: Time in HH:MM centered in middle (y = 2..18)
+    tft.setTextFont(2);
+    // 1. Left top corner: SUN SMART
+    tft.setTextColor(TFT_CYAN, 0x0841);
+    tft.drawString("SUN SMART", 10, 4);
+
+    // 2. Middle: Time in HH:MM
     char timeStr[16];
     getCurrentTimeHHMMString(timeStr, sizeof(timeStr));
-    tft.setFreeFont(FONT_FREE_BOLD_9);
     tft.setTextColor(TFT_WHITE, 0x0841);
-    int16_t tW = tft.textWidth(timeStr);
-    tft.drawString(timeStr, (320 - tW) / 2, 2);
+    tft.drawCentreString(timeStr, 160, 4);
 
-    // Sub-screen Title centered below Time (y = 20..38)
+    // 3. Sub-screen Title centered below Time (y = 20..38)
     if (rightBadgeText && rightBadgeText[0]) {
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(badgeColor, 0x0841);
@@ -2302,19 +2305,19 @@ void updateTFTDisplay() {
             break;
     }
 
-    // 1-second live RTC clock update in mobile header (only in setting/sub-screens, not on home)
-    static uint32_t s_lastClockSec = 0xFFFFFFFF;
-    uint32_t curClockSec = millis() / 1000;
-    if (!hasPopup && curClockSec != s_lastClockSec) {
-        if (currentScreen != SCREEN_HOME) {
-            char timeStr[16];
-            getCurrentTimeString(timeStr, sizeof(timeStr));
-            tft.setFreeFont(FONT_FREE_BOLD_9);
+    // Live RTC clock update in mobile header (updates HH:MM in middle when minute changes)
+    static char s_lastHeaderTime[8] = {0};
+    if (!hasPopup && currentScreen != SCREEN_HOME) {
+        char timeStr[8];
+        getCurrentTimeHHMMString(timeStr, sizeof(timeStr));
+        if (strcmp(timeStr, s_lastHeaderTime) != 0) {
+            tft.setTextFont(2);
             tft.setTextColor(TFT_WHITE, 0x0841);
-            tft.fillRect(10, 2, 85, 16, 0x0841);
-            tft.drawString(timeStr, 10, 2);
+            tft.fillRect(130, 2, 60, 18, 0x0841); // clear middle clock area
+            tft.drawCentreString(timeStr, 160, 4);
+            tft.setFreeFont(FONT_FREE_BOLD_9);
+            strncpy(s_lastHeaderTime, timeStr, sizeof(s_lastHeaderTime));
         }
-        s_lastClockSec = curClockSec;
     }
 
     // draw transient RTC confirmation popup if any (drawn once per activation to avoid blinking)
