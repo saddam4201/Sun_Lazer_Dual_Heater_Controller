@@ -434,14 +434,9 @@ void handleButtonInputs() {
     }
 #endif
 
-    // If Emergency Stop is active, any button press clears it
+    // If Emergency Stop is active, lock system and disable all buttons
     if (sysStatus.emergency_stop_active) {
-        if (btnOk || btnLeft || btnRight || btnUp || btnDown) {
-            sysStatus.emergency_stop_active = false;
-            g_simEmergencyStop = false;
-            transitionToState(STATE_READY);
-        }
-        return;
+        return; // All buttons disabled; user must restart the system
     }
 
     // Mutual Button Isolation: Button 5 (Start/Stop) only operates on Home screen
@@ -968,7 +963,8 @@ void handleButtonInputs() {
 void drawHomeScreen(bool fullRedraw) {
     bool hasPopup = (rtcConfirmUntil && millis() < rtcConfirmUntil) ||
                     (limitSwitchWarningUntil && millis() < limitSwitchWarningUntil) ||
-                    (sysStatus.forceStartPending);
+                    (sysStatus.forceStartPending) ||
+                    (sysStatus.emergency_stop_active);
     if (hasPopup) {
         return; // Suppress background cards from overwriting any active popup
     }
@@ -2370,7 +2366,7 @@ void updateTFTDisplay() {
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
             tft.drawString("ALL OUTPUTS SHUT DOWN", x + 10, y + 32);
             tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-            tft.drawString("[OK]: Clear / Dismiss", x + 10, y + 54);
+            tft.drawString("PLEASE RESTART SYSTEM", x + 10, y + 54);
             s_estopDrawn = true;
         }
     } else {
