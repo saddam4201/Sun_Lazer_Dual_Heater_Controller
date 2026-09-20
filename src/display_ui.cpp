@@ -1300,11 +1300,12 @@ void drawSettingsMenu(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] Move", 10, 212);
-        tft.drawString("[->] Select", 145, 212);
-        tft.drawString("[<-] Back", 245, 212);
+        tft.drawString("[UP/DN] Move", 10, 213);
+        tft.drawString("[->] Select", 145, 213);
+        tft.drawString("[<-] Back", 245, 213);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -1422,10 +1423,12 @@ void drawRecipesListScreen(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] Scroll", 10, 212);
-        tft.drawString("[->] Edit", 140, 212);
-        tft.drawString("[<-] Back", 240, 212);
+        tft.drawString("[UP/DN] Scroll", 10, 213);
+        tft.drawString("[->] Edit", 140, 213);
+        tft.drawString("[<-] Back", 240, 213);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     } else {
         tft.setFreeFont(FONT_FREE_BOLD_9);
@@ -1516,17 +1519,18 @@ void drawProgramEditScreen(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
         if (s_inValueEditMode) {
-            tft.drawString("[UP/DN] Change", 10, 212);
-            tft.drawString("[->] Save", 145, 212);
-            tft.drawString("[<-] Cancel", 230, 212);
+            tft.drawString("[UP/DN] Change", 10, 213);
+            tft.drawString("[->] Save", 145, 213);
+            tft.drawString("[<-] Cancel", 230, 213);
         } else {
-            tft.drawString("[UP/DN] Move", 10, 212);
-            tft.drawString("[->] Edit", 130, 212);
-            tft.drawString("[<-] Back", 240, 212);
+            tft.drawString("[UP/DN] Move", 10, 213);
+            tft.drawString("[->] Edit", 130, 213);
+            tft.drawString("[<-] Back", 240, 213);
         }
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -1640,10 +1644,12 @@ void drawFactoryResetPinScreen(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] Digit", 10, 212);
-        tft.drawString("[->] Next/Do", 130, 212);
-        tft.drawString("[<-] Back", 240, 212);
+        tft.drawString("[UP/DN] Digit", 10, 213);
+        tft.drawString("[->] Next/Do", 130, 213);
+        tft.drawString("[<-] Back", 240, 213);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -1728,10 +1734,12 @@ void drawProgramNameEditScreen(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] Char", 10, 212);
-        tft.drawString("Hold [->] 2s: Save", 115, 212);
-        tft.drawString("Hold [<-] 2s: Cancel", 215, 212);
+        tft.drawString("[UP/DN] Char", 10, 213);
+        tft.drawString("Hold [->] 2s: Save", 115, 213);
+        tft.drawString("Hold [<-] 2s: Cancel", 215, 213);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -1805,11 +1813,12 @@ void drawTempManipScreen(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] +/-", 10, 212);
-        tft.drawString("[->] H1/H2", 125, 212);
-        tft.drawString("[<-] Back", 225, 212);
+        tft.drawString("[UP/DN] +/-", 10, 213);
+        tft.drawString("[->] H1/H2", 125, 213);
+        tft.drawString("[<-] Back", 225, 213);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -1893,11 +1902,12 @@ void drawTimerEditor(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] +/-", 10, 212);
-        tft.drawString("[->] Next Digit", 115, 212);
-        tft.drawString("[<-] Save", 225, 212);
+        tft.drawString("[UP/DN] +/-", 10, 213);
+        tft.drawString("[->] Next Digit", 115, 213);
+        tft.drawString("[<-] Save", 225, 213);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -1978,11 +1988,12 @@ void drawRTCSetScreen(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] +/-", 10, 212);
-        tft.drawString("[->] Next", 125, 212);
-        tft.drawString("[<-] Save", 225, 212);
+        tft.drawString("[UP/DN] +/-", 10, 213);
+        tft.drawString("[->] Next", 125, 213);
+        tft.drawString("[<-] Save", 225, 213);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -2084,10 +2095,12 @@ void drawPIDTuningScreen(bool fullRedraw) {
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
+        tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] +/-", 10, 212);
-        tft.drawString("[->] Next", 125, 212);
-        tft.drawString("[<-] Save", 225, 212);
+        tft.drawString("[UP/DN] +/-", 10, 213);
+        tft.drawString("[->] Next", 125, 213);
+        tft.drawString("[<-] Save", 225, 213);
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
