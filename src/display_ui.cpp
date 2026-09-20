@@ -250,7 +250,7 @@ void playRisingSunAnimation() {
     const int16_t cx = 160;       // Center X
     const int16_t horizonY = 135; // Horizon line Y
     const int16_t sunRadius = 26; // Sun radius
-    const int16_t startY = 192;   // Visible below the horizon in the lower screen
+    const int16_t startY = horizonY + sunRadius; // Hidden completely below horizon: 161
     const int16_t apexY = 66;     // Final zenith Y position of sun center
     const uint32_t totalDurationMs = RISING_SUN_ANIM_DURATION_MS;
 
@@ -287,9 +287,11 @@ void playRisingSunAnimation() {
         // =====================================================================
         if (progress <= 0.70f) {
             float p_sun = progress / 0.70f; // 0.0 to 1.0
+            if (p_sun > 1.0f) p_sun = 1.0f;
+
             // Smoothstep curve (3*t^2 - 2*t^3): zero start velocity, silky acceleration & deceleration
             float ease = p_sun * p_sun * (3.0f - 2.0f * p_sun);
-            int16_t curY = startY - (int16_t)(ease * (startY - apexY));
+            int16_t curY = startY - (int16_t)(ease * (startY - apexY) + 0.5f);
 
             if (curY != lastSunY) {
                 // Erase previous sun position if it was drawn
@@ -312,30 +314,22 @@ void playRisingSunAnimation() {
                     coreColor  = 0xFFE0; // Brilliant Sun Yellow
                 }
 
-                // Draw Sun Disc & Glowing Core (fully visible below and above horizon)
+                // Draw Sun Disc & Glowing Core
                 tft.fillCircle(cx, curY, sunRadius, outerColor);
                 tft.fillCircle(cx, curY, sunRadius - 7, coreColor);
                 if (p_sun > 0.40f) {
                     tft.fillCircle(cx, curY, sunRadius - 16, TFT_WHITE); // Brilliant white center highlight
                 }
 
-                // Refresh horizon line cleanly (without slicing through the sun when crossing)
-                uint16_t horizonColor = (p_sun < 0.5f) ? 0xFA00 : 0xFD20;
-                if (curY >= (horizonY - sunRadius) && curY <= (horizonY + sunRadius)) {
-                    // Sun intersects horizon: draw horizon line to left and right of sun
-                    int16_t leftW = (cx - sunRadius - 3) - 20;
-                    if (leftW > 0) {
-                        tft.drawFastHLine(20, horizonY, leftW, horizonColor);
-                    }
-                    int16_t rightX = cx + sunRadius + 3;
-                    int16_t rightW = 300 - rightX;
-                    if (rightW > 0) {
-                        tft.drawFastHLine(rightX, horizonY, rightW, horizonColor);
-                    }
-                } else {
-                    // Sun does not intersect horizon: draw full horizon line
-                    tft.drawFastHLine(20, horizonY, 280, horizonColor);
+                // Clip / Mask everything below the horizon so the sun is NOT shown below the horizon
+                if (curY + sunRadius > horizonY) {
+                    int16_t maskH = (curY + sunRadius - horizonY) + 2;
+                    tft.fillRect(cx - sunRadius - 2, horizonY + 1, (sunRadius + 2) * 2, maskH, TFT_BLACK);
                 }
+
+                // Redraw crisp glowing horizon line
+                uint16_t horizonColor = (p_sun < 0.5f) ? 0xFA00 : 0xFD20;
+                tft.drawFastHLine(20, horizonY, 280, horizonColor);
 
                 lastSunY = curY;
             }
@@ -389,11 +383,11 @@ void playRisingSunAnimation() {
             }
         }
 
-        delay(15); // ~60 FPS smooth rendering
+        delay(20); // ~50 FPS smooth rendering without overloading serial buffer
     }
 
     // Brief hold at final frame for maximum visual impact
-    delay(200);
+    delay(250);
     tft.fillScreen(TFT_BLACK);
 }
 #endif
