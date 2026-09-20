@@ -46,7 +46,15 @@ void Task_SafetyAndControl(void *pvParameters) {
         // Continuous Over-Temperature Safety Trip
         if ((sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT) &&
             (sysStatus.h1_actual_c > 350.0f || sysStatus.h2_actual_c > 350.0f)) {
-            triggerSafetyShutdown("OVER-TEMPERATURE TRIP");
+            char tripMsg[32];
+            if (sysStatus.h1_actual_c > 350.0f && sysStatus.h2_actual_c > 350.0f) {
+                snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H1:%.0f H2:%.0fC", sysStatus.h1_actual_c, sysStatus.h2_actual_c);
+            } else if (sysStatus.h1_actual_c > 350.0f) {
+                snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H1: %.1f C", sysStatus.h1_actual_c);
+            } else {
+                snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H2: %.1f C", sysStatus.h2_actual_c);
+            }
+            triggerSafetyShutdown(tripMsg);
         }
 
         // Read physical limit switches with 100ms debounce (Active LOW) + Virtual Simulator override
@@ -157,7 +165,17 @@ void Task_SafetyAndControl(void *pvParameters) {
                 s_processAbortedByLimitSwitch = false;
                 if (isnan(sysStatus.h1_actual_c) || sysStatus.h1_actual_c < -45.0f || sysStatus.h1_actual_c > 350.0f ||
                     isnan(sysStatus.h2_actual_c) || sysStatus.h2_actual_c < -45.0f || sysStatus.h2_actual_c > 350.0f) {
-                    triggerSafetyShutdown("SENSOR DISCONNECT FAULT");
+                    char tripMsg[32];
+                    if (sysStatus.h1_actual_c > 350.0f && sysStatus.h2_actual_c > 350.0f) {
+                        snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H1:%.0f H2:%.0fC", sysStatus.h1_actual_c, sysStatus.h2_actual_c);
+                    } else if (sysStatus.h1_actual_c > 350.0f) {
+                        snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H1: %.1f C", sysStatus.h1_actual_c);
+                    } else if (sysStatus.h2_actual_c > 350.0f) {
+                        snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H2: %.1f C", sysStatus.h2_actual_c);
+                    } else {
+                        snprintf(tripMsg, sizeof(tripMsg), "SENSOR DISCONNECT FAULT");
+                    }
+                    triggerSafetyShutdown(tripMsg);
                 } else {
                     // reset max torque for new run
                     sysStatus.max_torque_nm = 0.0f;
