@@ -250,9 +250,12 @@ void playRisingSunAnimation() {
     const int16_t cx = 160;       // Center X
     const int16_t horizonY = 135; // Horizon line Y
     const int16_t sunRadius = 26; // Sun radius
-    const int16_t startY = horizonY + sunRadius; // Hidden completely below horizon: 161
+    const int16_t startY = horizonY + sunRadius + 2; // Fully hidden below horizon: 163
     const int16_t apexY = 66;     // Final zenith Y position of sun center
     const uint32_t totalDurationMs = RISING_SUN_ANIM_DURATION_MS;
+
+    int16_t lastSunY = -1;
+    bool brandDrawn = false;
 
     // Ray angles (radians) for 9 radiating sunbeams across the upper hemisphere
     const float rayAngles[] = {
@@ -267,103 +270,119 @@ void playRisingSunAnimation() {
         2.8798f  // 165 deg
     };
     const int numRays = sizeof(rayAngles) / sizeof(rayAngles[0]);
+    int16_t lastRayLen = 0;
 
     // Initial horizon line draw in subtle warm amber
     tft.drawFastHLine(20, horizonY, 280, 0xFA00);
 
-    // =====================================================================
-    // Phase 1 & 2: Ultra-Smooth 1-Pixel-Per-Step Sun Ascent
-    // Moving exactly 1 pixel per step completely eliminates jitter & skipping
-    // =====================================================================
-    const int16_t totalSteps = startY - apexY; // 161 - 66 = 95 steps
-    const uint32_t ascentTargetMs = (totalDurationMs * 68) / 100; // ~68% of time for ascent
-    const uint32_t avgDelay = ascentTargetMs / totalSteps; // ~18ms
+    uint32_t startMs = millis();
+    while (true) {
+        uint32_t elapsed = millis() - startMs;
+        if (elapsed >= totalDurationMs) break;
 
-    for (int16_t step = 0; step <= totalSteps; step++) {
-        int16_t curY = startY - step; // Exactly 1 pixel per step
-        float p_sun = (float)step / (float)totalSteps; // 0.0 to 1.0
+        float progress = (float)elapsed / (float)totalDurationMs; // 0.0 to 1.0
 
-        // Dynamic color progression as sun rises:
-        // Deep Orange-Red -> Warm Orange -> Brilliant Golden Yellow
-        uint16_t outerColor;
-        uint16_t coreColor;
-        if (p_sun < 0.35f) {
-            outerColor = 0xF980; // Deep Orange-Red
-            coreColor  = 0xFA20; // Warm Orange
-        } else if (p_sun < 0.70f) {
-            outerColor = 0xFD20; // Bright Orange
-            coreColor  = 0xFEC0; // Golden Yellow
-        } else {
-            outerColor = 0xFEC0; // Golden Yellow
-            coreColor  = 0xFFE0; // Brilliant Sun Yellow
+        // =====================================================================
+        // Phase 1 & 2: Sun Ascent (0.0 to 0.65)
+        // =====================================================================
+        if (progress <= 0.65f) {
+            float p_sun = progress / 0.65f; // 0.0 to 1.0
+            // Sine ease-out for smooth deceleration towards apex
+            float ease = sinf(p_sun * 1.5707963f);
+            int16_t curY = startY - (int16_t)(ease * (startY - apexY));
+
+            if (curY != lastSunY) {
+                // Erase previous sun position if it was drawn
+                if (lastSunY > 0) {
+                    tft.fillCircle(cx, lastSunY, sunRadius + 1, TFT_BLACK);
+                }
+
+                // Dynamic color progression as sun rises:
+                // Deep Orange-Red -> Bright Orange -> Golden Yellow
+                uint16_t outerColor;
+                uint16_t coreColor;
+                if (p_sun < 0.35f) {
+                    outerColor = 0xF980; // Deep Orange-Red
+                    coreColor  = 0xFA20; // Warm Orange
+                } else if (p_sun < 0.70f) {
+                    outerColor = 0xFD20; // Bright Orange
+                    coreColor  = 0xFEC0; // Golden Yellow
+                } else {
+                    outerColor = 0xFEC0; // Golden Yellow
+                    coreColor  = 0xFFE0; // Brilliant Sun Yellow
+                }
+
+                // Draw Sun Disc & Glowing Core
+                tft.fillCircle(cx, curY, sunRadius, outerColor);
+                tft.fillCircle(cx, curY, sunRadius - 7, coreColor);
+                if (p_sun > 0.50f) {
+                    tft.fillCircle(cx, curY, sunRadius - 16, TFT_WHITE); // Brilliant white center highlight
+                }
+
+                // Mask anything below the horizon line so sun rises from behind it
+                tft.fillRect(0, horizonY + 1, 320, 240 - (horizonY + 1), TFT_BLACK);
+
+                // Redraw crisp glowing horizon line
+                uint16_t horizonColor = (p_sun < 0.5f) ? 0xFA00 : 0xFD20;
+                tft.drawFastHLine(20, horizonY, 280, horizonColor);
+
+                lastSunY = curY;
+            }
+        } 
+        // =====================================================================
+        // Phase 3: Sun Zenith, Radiating Beams & Brand Reveal (0.65 to 1.0)
+        // =====================================================================
+        else {
+            float p_rays = (progress - 0.65f) / 0.35f; // 0.0 to 1.0
+            if (p_rays > 1.0f) p_rays = 1.0f;
+
+            // Brand Typography Reveal (rendered once at start of phase 3)
+            if (!brandDrawn) {
+                // Horizon glows brilliant gold
+                tft.drawFastHLine(15, horizonY, 290, 0xFFE0);
+
+                // Brand Title: SUN SMART (FreeSansBold18, Cyan)
+                tft.setFreeFont(FONT_FREE_BOLD_18);
+                tft.setTextColor(TFT_CYAN, TFT_BLACK);
+                tft.drawCentreString("SUN SMART", cx, 150);
+
+                // Subtitle: DUAL HEATER CONTROLLER (FreeSansBold9, Yellow)
+                tft.setFreeFont(FONT_FREE_BOLD_9);
+                tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+                tft.drawCentreString("DUAL HEATER CONTROLLER", cx, 186);
+
+                // Manufacturer Accent: BY SUN LAZER (Light Grey)
+                tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+                tft.drawCentreString("BY SUN LAZER", cx, 212);
+
+                brandDrawn = true;
+            }
+
+            // Radiating Sun Rays extending outward
+            int16_t rayLen = (int16_t)(p_rays * 18.0f);
+            if (rayLen != lastRayLen) {
+                int16_t innerR = sunRadius + 5;
+                int16_t outerR = innerR + rayLen;
+
+                uint16_t rayColor = (p_rays < 0.6f) ? 0xFD20 : 0xFFE0;
+
+                for (int i = 0; i < numRays; i++) {
+                    float rad = rayAngles[i];
+                    int16_t x0 = cx + (int16_t)(cosf(rad) * innerR);
+                    int16_t y0 = apexY - (int16_t)(sinf(rad) * innerR);
+                    int16_t x1 = cx + (int16_t)(cosf(rad) * outerR);
+                    int16_t y1 = apexY - (int16_t)(sinf(rad) * outerR);
+                    tft.drawLine(x0, y0, x1, y1, rayColor);
+                }
+                lastRayLen = rayLen;
+            }
         }
 
-        // 1. Draw Sun Disc & Core at current position (never erase entire body to black)
-        tft.fillCircle(cx, curY, sunRadius, outerColor);
-        tft.fillCircle(cx, curY, sunRadius - 7, coreColor);
-        if (p_sun > 0.40f) {
-            tft.fillCircle(cx, curY, sunRadius - 16, TFT_WHITE);
-        }
-
-        // 2. Trailing edge clean-up (ZERO FLICKER: only erase bottom pixels no longer occupied)
-        if (curY + sunRadius > horizonY) {
-            // Emerging from horizon: mask only the bottom slice that dips below the horizon
-            int16_t maskH = (curY + sunRadius - horizonY) + 2;
-            tft.fillRect(cx - sunRadius - 1, horizonY + 1, (sunRadius + 1) * 2 + 1, maskH, TFT_BLACK);
-            // Redraw crisp glowing horizon line
-            uint16_t horizonColor = (p_sun < 0.5f) ? 0xFA00 : 0xFD20;
-            tft.drawFastHLine(20, horizonY, 280, horizonColor);
-        } else {
-            // Completely above horizon: erase only the 2 trailing pixel rows at the bottom
-            tft.fillRect(cx - sunRadius - 1, curY + sunRadius + 1, (sunRadius + 1) * 2 + 1, 2, TFT_BLACK);
-        }
-
-        // Cosine ease-in-out delay: gentle start, fluid middle, gentle arrival at apex
-        float speedFactor = sinf(p_sun * 3.14159265f); // 0 at ends, 1 in middle
-        uint32_t stepDelay = avgDelay + (uint32_t)((1.0f - speedFactor) * 8.0f) - (uint32_t)(speedFactor * 5.0f);
-        if (stepDelay < 10) stepDelay = 10;
-        delay(stepDelay);
-    }
-
-    // =====================================================================
-    // Phase 3: Sun Zenith, Radiating Beams & Brand Reveal
-    // =====================================================================
-    // Horizon glows brilliant gold
-    tft.drawFastHLine(15, horizonY, 290, 0xFFE0);
-
-    // Brand Title: SUN SMART (FreeSansBold18, Cyan)
-    tft.setFreeFont(FONT_FREE_BOLD_18);
-    tft.setTextColor(TFT_CYAN, TFT_BLACK);
-    tft.drawCentreString("SUN SMART", cx, 150);
-
-    // Subtitle: DUAL HEATER CONTROLLER (FreeSansBold9, Yellow)
-    tft.setFreeFont(FONT_FREE_BOLD_9);
-    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.drawCentreString("DUAL HEATER CONTROLLER", cx, 186);
-
-    // Manufacturer Accent: BY SUN LAZER (Light Grey)
-    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tft.drawCentreString("BY SUN LAZER", cx, 212);
-
-    // Radiating Sun Rays extending outward smoothly
-    int16_t innerR = sunRadius + 5;
-    for (int16_t rayLen = 2; rayLen <= 18; rayLen += 2) {
-        int16_t outerR = innerR + rayLen;
-        uint16_t rayColor = (rayLen < 10) ? 0xFD20 : 0xFFE0;
-
-        for (int i = 0; i < numRays; i++) {
-            float rad = rayAngles[i];
-            int16_t x0 = cx + (int16_t)(cosf(rad) * innerR);
-            int16_t y0 = apexY - (int16_t)(sinf(rad) * innerR);
-            int16_t x1 = cx + (int16_t)(cosf(rad) * outerR);
-            int16_t y1 = apexY - (int16_t)(sinf(rad) * outerR);
-            tft.drawLine(x0, y0, x1, y1, rayColor);
-        }
-        delay(35);
+        delay(30); // ~33 FPS smooth rendering
     }
 
     // Brief hold at final frame for maximum visual impact
-    delay(300);
+    delay(200);
     tft.fillScreen(TFT_BLACK);
 }
 #endif

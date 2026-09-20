@@ -65,7 +65,7 @@
 // Enable Rising Sun Startup Animation (cinematic brand intro on boot)
 // Set to 1 to enable, 0 to disable
 #ifndef ENABLE_RISING_SUN_ANIMATION
-#define ENABLE_RISING_SUN_ANIMATION 1
+#define ENABLE_RISING_SUN_ANIMATION 0
 #endif
 
 // Rising Sun Startup Animation Duration in milliseconds
