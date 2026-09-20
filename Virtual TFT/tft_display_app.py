@@ -1010,22 +1010,20 @@ class VirtualTFTApp(tk.Tk):
             # Card 1: Heater 1 (y = 66..131, h = 65)
             self.cmd_queue.put("RRECT,6,66,150,65,4,0x4A69,0")
             self.cmd_queue.put("TXT,14,69,2,0x07FF,0x0000,HEATER 1")
-            self.cmd_queue.put("TXT,14,111,2,0xC618,0x0000,SET: 50.0 C")
+            self.cmd_queue.put("TXT,14,114,2,0xC618,0x0000,SET: 50.0 C")
 
             # Card 2: Heater 2 (y = 66..131, h = 65)
             self.cmd_queue.put("RRECT,164,66,150,65,4,0x4A69,0")
             self.cmd_queue.put("TXT,172,69,2,0x07FF,0x0000,HEATER 2")
-            self.cmd_queue.put("TXT,172,111,2,0xC618,0x0000,SET: 50.0 C")
+            self.cmd_queue.put("TXT,172,114,2,0xC618,0x0000,SET: 50.0 C")
 
             # Card 3: Torque (y = 135..200, h = 65)
             self.cmd_queue.put("RRECT,6,135,150,65,4,0x4A69,0")
             self.cmd_queue.put("TXT,14,138,2,0xFFE0,0x0000,TORQUE")
-            self.cmd_queue.put("TXT,14,180,2,0xC618,0x0000,UNIT: Nm")
 
             # Card 4: Timer (y = 135..200, h = 65)
             self.cmd_queue.put("RRECT,164,135,150,65,4,0x4A69,0")
             self.cmd_queue.put("TXT,172,138,2,0x07E0,0x0000,TIMER")
-            self.cmd_queue.put("TXT,172,180,2,0xC618,0x0000,TOTAL: 150s")
 
             # Footer (y = 204..240)
             self.cmd_queue.put("RECT,0,204,320,32,0x0841,1")
@@ -1043,18 +1041,18 @@ class VirtualTFTApp(tk.Tk):
                 torque = max(0.0, 1.45 + 0.35 * math.sin(t * 1.2))
 
                 # Medium font (size 4) updates in-place
-                self.cmd_queue.put(f"TXT,14,85,4,0xFFFF,0x0000,{h1_act:.1f}")
-                self.cmd_queue.put("TXT,105,86,2,0xFFFF,0x0000,C")
+                self.cmd_queue.put(f"TXT,14,82,4,0xFFFF,0x0000,{h1_act:.1f}")
+                self.cmd_queue.put("TXT,105,83,2,0xFFFF,0x0000,C")
 
-                self.cmd_queue.put(f"TXT,172,85,4,0xFFFF,0x0000,{h2_act:.1f}")
-                self.cmd_queue.put("TXT,265,86,2,0xFFFF,0x0000,C")
+                self.cmd_queue.put(f"TXT,172,82,4,0xFFFF,0x0000,{h2_act:.1f}")
+                self.cmd_queue.put("TXT,265,83,2,0xFFFF,0x0000,C")
 
-                self.cmd_queue.put(f"TXT,14,154,4,0xFFFF,0x0000,{torque:.2f}")
-                self.cmd_queue.put("TXT,105,155,2,0xFFFF,0x0000,Nm")
+                self.cmd_queue.put(f"TXT,14,158,4,0xFFFF,0x0000,{torque:.2f}")
+                self.cmd_queue.put("TXT,105,159,2,0xFFFF,0x0000,Nm")
 
                 mm = timer_sec // 60
                 ss = timer_sec % 60
-                self.cmd_queue.put(f"TXT,172,154,4,0x07E0,0x0000,{mm:02d}:{ss:02d}")
+                self.cmd_queue.put(f"TXT,172,158,4,0x07E0,0x0000,{mm:02d}:{ss:02d}")
 
                 # Live RTC Clock
                 cur_clock = (clock_sec + int(t)) % 86400

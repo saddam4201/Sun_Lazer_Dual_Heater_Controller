@@ -1093,19 +1093,19 @@ void drawHomeScreen(bool fullRedraw) {
     static int last_h1_act_tenth = -99999;
     int cur_h1_act_tenth = (int)roundf(sysStatus.h1_actual_c * 10.0f);
     if (fullRedraw || cur_h1_act_tenth != last_h1_act_tenth) {
-        tft.fillRect(10, 84, 140, 23, TFT_BLACK);
+        tft.fillRect(10, 81, 140, 28, TFT_BLACK);
         if (isnan(sysStatus.h1_actual_c) || sysStatus.h1_actual_c < -45.0f) {
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_RED, TFT_BLACK);
-            tft.drawString("FAULT", 14, 85);
+            tft.drawString("FAULT", 14, 82);
         } else {
             char valBuf[16];
             snprintf(valBuf, sizeof(valBuf), "%.1f", sysStatus.h1_actual_c);
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.drawString(valBuf, 14, 85);
+            tft.drawString(valBuf, 14, 82);
             tft.setFreeFont(FONT_FREE_BOLD_9);
-            tft.drawString("C", 105, 86);
+            tft.drawString("C", 105, 83);
         }
         last_h1_act_tenth = cur_h1_act_tenth;
     }
@@ -1115,10 +1115,10 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || cur_h1_set_tenth != last_h1_set_tenth) {
         char setBuf[32];
         snprintf(setBuf, sizeof(setBuf), "SET: %.1f C", recipes[sysStatus.active_program_idx].h1_setpoint_c);
-        tft.fillRect(10, 111, 140, 18, TFT_BLACK);
+        tft.fillRect(10, 112, 140, 16, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(setBuf, 14, 113);
+        tft.drawString(setBuf, 14, 114);
         last_h1_set_tenth = cur_h1_set_tenth;
     }
 #endif
@@ -1128,19 +1128,19 @@ void drawHomeScreen(bool fullRedraw) {
     static int last_h2_act_tenth = -99999;
     int cur_h2_act_tenth = (int)roundf(sysStatus.h2_actual_c * 10.0f);
     if (fullRedraw || cur_h2_act_tenth != last_h2_act_tenth) {
-        tft.fillRect(168, 84, 140, 23, TFT_BLACK);
+        tft.fillRect(168, 81, 140, 28, TFT_BLACK);
         if (isnan(sysStatus.h2_actual_c) || sysStatus.h2_actual_c < -45.0f) {
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_RED, TFT_BLACK);
-            tft.drawString("FAULT", 172, 85);
+            tft.drawString("FAULT", 172, 82);
         } else {
             char valBuf[16];
             snprintf(valBuf, sizeof(valBuf), "%.1f", sysStatus.h2_actual_c);
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.drawString(valBuf, 172, 85);
+            tft.drawString(valBuf, 172, 82);
             tft.setFreeFont(FONT_FREE_BOLD_9);
-            tft.drawString("C", 265, 86);
+            tft.drawString("C", 265, 83);
         }
         last_h2_act_tenth = cur_h2_act_tenth;
     }
@@ -1150,10 +1150,10 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || cur_h2_set_tenth != last_h2_set_tenth) {
         char setBuf[32];
         snprintf(setBuf, sizeof(setBuf), "SET: %.1f C", recipes[sysStatus.active_program_idx].h2_setpoint_c);
-        tft.fillRect(168, 111, 140, 18, TFT_BLACK);
+        tft.fillRect(168, 112, 140, 16, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(setBuf, 172, 113);
+        tft.drawString(setBuf, 172, 114);
         last_h2_set_tenth = cur_h2_set_tenth;
     }
 #endif
@@ -1165,31 +1165,22 @@ void drawHomeScreen(bool fullRedraw) {
     float conv_torque = sysStatus.current_torque_nm * getTorqueConversionFactor(cur_unit);
     int cur_torque_hundredth = (int)roundf(conv_torque * 100.0f);
     if (fullRedraw || cur_torque_hundredth != last_torque_hundredth || cur_unit != last_tq_unit) {
-        tft.fillRect(10, 153, 140, 23, TFT_BLACK);
+        tft.fillRect(10, 154, 140, 32, TFT_BLACK);
         char tqBuf[16];
         snprintf(tqBuf, sizeof(tqBuf), "%.2f", conv_torque);
         tft.setFreeFont(FONT_FREE_BOLD_18);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString(tqBuf, 14, 154);
+        tft.drawString(tqBuf, 14, 158);
         tft.setFreeFont(FONT_FREE_BOLD_9);
-        tft.drawString(getTorqueUnitName(cur_unit), 105, 155);
+        tft.drawString(getTorqueUnitName(cur_unit), 105, 159);
         last_torque_hundredth = cur_torque_hundredth;
         last_tq_unit = cur_unit;
-    }
-
-    if (fullRedraw || cur_unit != last_tq_unit) {
-        char limBuf[32];
-        snprintf(limBuf, sizeof(limBuf), "UNIT: %s", getTorqueUnitName(cur_unit));
-        tft.fillRect(10, 179, 140, 18, TFT_BLACK);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
-        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(limBuf, 14, 181);
     }
 
     // 7. Card 4: Process Timer
     static uint32_t last_remaining = 0xFFFFFFFF;
     if (fullRedraw || sysStatus.remaining_time_sec != last_remaining) {
-        tft.fillRect(168, 153, 140, 23, TFT_BLACK);
+        tft.fillRect(168, 154, 140, 32, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_18);
         if (sysStatus.remaining_time_sec > 0) {
             uint32_t t = sysStatus.remaining_time_sec;
@@ -1198,24 +1189,12 @@ void drawHomeScreen(bool fullRedraw) {
             char tb[16];
             snprintf(tb, sizeof(tb), "%02u:%02u", (unsigned)mm, (unsigned)ss);
             tft.setTextColor(TFT_GREEN, TFT_BLACK);
-            tft.drawString(tb, 172, 154);
+            tft.drawString(tb, 172, 158);
         } else {
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.drawString("--:--", 172, 154);
+            tft.drawString("--:--", 172, 158);
         }
         last_remaining = sysStatus.remaining_time_sec;
-    }
-
-    static uint32_t last_total_time = 0xFFFFFFFF;
-    uint32_t cur_total_time = recipes[sysStatus.active_program_idx].process_time_sec;
-    if (fullRedraw || cur_total_time != last_total_time) {
-        char totBuf[32];
-        snprintf(totBuf, sizeof(totBuf), "TOTAL: %us", (unsigned)cur_total_time);
-        tft.fillRect(168, 179, 140, 18, TFT_BLACK);
-        tft.setFreeFont(FONT_FREE_BOLD_9);
-        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(totBuf, 172, 181);
-        last_total_time = cur_total_time;
     }
 
     // 8. Footer Navigation Bar Dynamic Update (Running vs Idle)
@@ -1262,8 +1241,8 @@ void drawSettingsMenu(bool fullRedraw) {
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_WHITE, 0x0841);
         tft.drawString("[UP/DN] Move", 10, 212);
-        tft.drawString("[->] Select", 130, 212);
-        tft.drawString("[<-] Back", 240, 212);
+        tft.drawString("[->] Select", 145, 212);
+        tft.drawString("[<-] Back", 245, 212);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
 
@@ -1275,14 +1254,31 @@ void drawSettingsMenu(bool fullRedraw) {
     bool needsRedraw = fullRedraw || (settingsMenuIdx != last_sel) || (g_relayType != last_relay) || (sysStatus.start_mode_auto != last_auto);
     if (!needsRedraw) return;
 
-    char menuItems[7][48];
-    snprintf(menuItems[0], sizeof(menuItems[0]), "1. PROGRAM RECIPES");
-    snprintf(menuItems[1], sizeof(menuItems[1]), "2. START MODE: %s", (sysStatus.start_mode_auto ? "AUTO" : "MANUAL"));
-    snprintf(menuItems[2], sizeof(menuItems[2]), "3. RELAY TYPE: %s", (g_relayType == RELAY_TYPE_SSR ? "SSR" : "NORMAL"));
-    snprintf(menuItems[3], sizeof(menuItems[3]), "4. PID TUNING");
-    snprintf(menuItems[4], sizeof(menuItems[4]), "5. DATE & TIME (RTC)");
-    snprintf(menuItems[5], sizeof(menuItems[5]), "6. RESET TO DEFAULT");
-    snprintf(menuItems[6], sizeof(menuItems[6]), "7. EXIT TO HOME");
+    struct SettingItem_t {
+        char name[7];  // exactly 6 characters + null terminator
+        char val[16];
+    };
+    SettingItem_t menuItems[7];
+    strncpy(menuItems[0].name, "RECIPE", 7);
+    strncpy(menuItems[0].val,  "SELECT", 16);
+
+    strncpy(menuItems[1].name, "S-MODE", 7);
+    strncpy(menuItems[1].val,  sysStatus.start_mode_auto ? "AUTO" : "MANUAL", 16);
+
+    strncpy(menuItems[2].name, "RELAY ", 7);
+    strncpy(menuItems[2].val,  g_relayType == RELAY_TYPE_SSR ? "SSR" : "NORMAL", 16);
+
+    strncpy(menuItems[3].name, "TUNING", 7);
+    strncpy(menuItems[3].val,  "PID COEFF", 16);
+
+    strncpy(menuItems[4].name, "RTCSET", 7);
+    strncpy(menuItems[4].val,  "DATE/TIME", 16);
+
+    strncpy(menuItems[5].name, "RESET ", 7);
+    strncpy(menuItems[5].val,  "DEFAULT", 16);
+
+    strncpy(menuItems[6].name, "EXIT  ", 7);
+    strncpy(menuItems[6].val,  "TO HOME", 16);
 
     // Show 4 items per page in scroll window
     if (settingsMenuIdx < topIdx) topIdx = settingsMenuIdx;
@@ -1306,9 +1302,14 @@ void drawSettingsMenu(bool fullRedraw) {
 
         tft.setFreeFont(FONT_FREE_BOLD_12);
         tft.setTextColor(isSel ? TFT_GREEN : TFT_WHITE, isSel ? 0x10C2 : TFT_BLACK);
-        char titleBuf[52];
-        snprintf(titleBuf, sizeof(titleBuf), "%s%s", isSel ? "> " : "  ", menuItems[itemIdx]);
-        tft.drawString(titleBuf, 16, curY + 7);
+
+        // Fixed-width 2-column alignment (6-char name, colon at x=116, value at x=130)
+        if (isSel) {
+            tft.drawString(">", 16, curY + 7);
+        }
+        tft.drawString(menuItems[itemIdx].name, 32, curY + 7);
+        tft.drawString(":", 116, curY + 7);
+        tft.drawString(menuItems[itemIdx].val, 130, curY + 7);
     }
     tft.setFreeFont(FONT_FREE_BOLD_9);
 
