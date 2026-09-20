@@ -154,7 +154,7 @@ void loadRecipesFromNVS() {
         snprintf(recipes[i].name, sizeof(recipes[i].name), "Program %02d", i + 1);
         recipes[i].h1_setpoint_c = 50.0f;
         recipes[i].h2_setpoint_c = 50.0f;
-        recipes[i].process_time_sec = 60;
+        recipes[i].process_time_sec = 100; // 100 units = 1 min = 60s
         recipes[i].temp_tolerance_c = 2.0f;
         recipes[i].h1_temp_offset_pct = 0.0f;
         recipes[i].h2_temp_offset_pct = 0.0f;
@@ -365,7 +365,7 @@ void resetAllToFactoryDefaults() {
         snprintf(recipes[i].name, sizeof(recipes[i].name), "Program %02d", i + 1);
         recipes[i].h1_setpoint_c = 50.0f;
         recipes[i].h2_setpoint_c = 50.0f;
-        recipes[i].process_time_sec = 60;
+        recipes[i].process_time_sec = 100; // 100 units = 1 min = 60s
         recipes[i].temp_tolerance_c = 2.0f;
         recipes[i].h1_temp_offset_pct = 0.0f;
         recipes[i].h2_temp_offset_pct = 0.0f;

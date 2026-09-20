@@ -355,8 +355,8 @@ class VirtualTFTApp(tk.Tk):
 
         # 5. Interactive Navigation Tactile Pushbuttons on PCB
         btn_y = screen_y2 + 22
-        btn_spacing = min(76, max(52, (pcb_w - 60) // 5))
-        btn_start_x = pcb_w // 2 - int(2.0 * btn_spacing)
+        btn_spacing = min(68, max(46, (pcb_w - 60) // 6))
+        btn_start_x = pcb_w // 2 - int(2.5 * btn_spacing)
 
         nav_specs = [
             ("pcb_btn1", btn_start_x + 0 * btn_spacing, "1: UP (▲)",    self.send_nav_up,    "#38BDF8"),
@@ -364,6 +364,7 @@ class VirtualTFTApp(tk.Tk):
             ("pcb_btn3", btn_start_x + 2 * btn_spacing, "3: LEFT (◀)",  self.send_nav_left,  "#38BDF8"),
             ("pcb_btn4", btn_start_x + 3 * btn_spacing, "4: RIGHT (▶)", self.send_nav_right, "#38BDF8"),
             ("pcb_btn5", btn_start_x + 4 * btn_spacing, "5: START/STOP", self.send_nav_ok, "#00FF66"),
+            ("pcb_estop", btn_start_x + 5 * btn_spacing, "E: E-STOP",   self.send_nav_estop, "#EF4444"),
         ]
 
         for tag, bx, label, cmd, hl_color in nav_specs:
@@ -615,6 +616,9 @@ class VirtualTFTApp(tk.Tk):
     def send_nav_ok(self):
         self.send_serial_char('5')
 
+    def send_nav_estop(self):
+        self.send_serial_char('E')
+
     def toggle_down_limit(self):
         self.sim_down_limit = not self.sim_down_limit
         state = "on" if self.sim_down_limit else "off"
@@ -679,6 +683,8 @@ class VirtualTFTApp(tk.Tk):
             self.send_nav_ok()
         elif event.char in ('1', '2', '3', '4', '5'):
             self.send_serial_char(event.char)
+        elif event.char in ('e', 'E'):
+            self.send_nav_estop()
 
     # --------------------------------------------------------------------------
     # COMMAND QUEUE & PARSER DISPATCHER

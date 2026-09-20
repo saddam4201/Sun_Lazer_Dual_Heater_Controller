@@ -432,10 +432,42 @@ void handleButtonInputs() {
             case '3': btnLeft = true; break;
             case '4': btnRight = true; break;
             case '5': btnOk = true; break;
+            case 'e':
+            case 'E':
+                sysStatus.emergency_stop_active = true;
+                safeDigitalWrite(PIN_SSR_1, LOW);
+                safeDigitalWrite(PIN_SSR_2, LOW);
+                safeDigitalWrite(PIN_PNEUMATIC, LOW);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
+                sysStatus.torque_motor_running = false;
+                sysStatus.motor_up_running = false;
+                sysStatus.motor_down_running = false;
+                sysStatus.remaining_time_sec = 0;
+                sysStatus.forceStartActive = false;
+                sysStatus.forceStartPending = false;
+                currentScreen = SCREEN_HOME;
+                transitionToState(STATE_IDLE);
+                break;
             default: break;
         }
     }
 #endif
+
+    // If Emergency Stop is active, any button press clears it once physical switch is released
+    if (sysStatus.emergency_stop_active) {
+#ifndef SIMULATED_HARDWARE
+        int raw_estop_pin = digitalRead(PIN_EMERGENCY_STOP);
+#else
+        int raw_estop_pin = HIGH;
+#endif
+        if (raw_estop_pin != LOW) {
+            if (btnOk || btnLeft || btnRight || btnUp || btnDown) {
+                sysStatus.emergency_stop_active = false;
+                transitionToState(STATE_READY);
+            }
+        }
+        return;
+    }
 
     // Mutual Button Isolation: Button 5 (Start/Stop) only operates on Home screen
     if (currentScreen != SCREEN_HOME) {
@@ -468,26 +500,25 @@ void handleButtonInputs() {
 
         if (sysStatus.currentState == STATE_IDLE || sysStatus.currentState == STATE_READY) {
             bool allowStart = true;
-            if (sysStatus.start_mode_auto) {
-                ProgramRecipe_t &prec = recipes[sysStatus.active_program_idx];
+            ProgramRecipe_t &prec = recipes[sysStatus.active_program_idx];
+            float tol = fabsf(prec.temp_tolerance_c);
 #if ENABLE_H1
-                if (fabsf(sysStatus.h1_actual_c - prec.h1_setpoint_c) > prec.temp_tolerance_c) {
-                    allowStart = false;
-                }
+            if (fabsf(sysStatus.h1_actual_c - prec.h1_setpoint_c) > tol) {
+                allowStart = false;
+            }
 #endif
 #if ENABLE_H2
-                if (fabsf(sysStatus.h2_actual_c - prec.h2_setpoint_c) > prec.temp_tolerance_c) {
-                    allowStart = false;
-                }
-#endif
+            if (fabsf(sysStatus.h2_actual_c - prec.h2_setpoint_c) > tol) {
+                allowStart = false;
             }
+#endif
 
             if (allowStart) {
                 sysStatus.forceStartActive = false;
                 currentScreen = SCREEN_HOME;
                 transitionToState(STATE_SAFETY_CHECK);
             } else {
-                // Start blocked by Auto mode: offer force-start confirmation
+                // Temperature outside tolerance: offer force-start confirmation
                 currentScreen = SCREEN_HOME;
                 sysStatus.forceStartPending = true;
                 sysStatus.forceStartUntilMs = millis() + 8000; // 8s window to confirm
@@ -505,7 +536,10 @@ void handleButtonInputs() {
             safeDigitalWrite(PIN_SSR_1, LOW);
             safeDigitalWrite(PIN_SSR_2, LOW);
             safeDigitalWrite(PIN_PNEUMATIC, LOW);
-            safeDigitalWrite(PIN_MOTOR_UP, LOW);
+            safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
+            sysStatus.torque_motor_running = false;
+            sysStatus.motor_up_running = false;
+            sysStatus.motor_down_running = false;
             sysStatus.remaining_time_sec = 0;
             sysStatus.forceStartActive = false;
             transitionToState(STATE_IDLE);
@@ -1055,7 +1089,7 @@ void drawHomeScreen(bool fullRedraw) {
                 statusTextColor = TFT_GREEN;
                 break;
             case STATE_PROCESS_TIMER:
-                statusLine = "PROCESS RUNNING...";
+                statusLine = "TORQUE MOTOR RUNNING...";
                 statusBorder = TFT_GREEN;
                 statusTextColor = TFT_GREEN;
                 break;
@@ -1419,7 +1453,7 @@ void drawRecipesListScreen(bool fullRedraw) {
             char h1Buf[16], h2Buf[16], tBuf[16];
             snprintf(h1Buf, sizeof(h1Buf), "%.0fC", recipes[idx].h1_setpoint_c);
             snprintf(h2Buf, sizeof(h2Buf), "%.0fC", recipes[idx].h2_setpoint_c);
-            snprintf(tBuf, sizeof(tBuf), "%us", (unsigned)recipes[idx].process_time_sec);
+            snprintf(tBuf, sizeof(tBuf), "%u", (unsigned)recipes[idx].process_time_sec);
             tft.drawString(h1Buf, h1X, curY + 6);
             tft.drawString(h2Buf, h2X, curY + 6);
             tft.drawString(tBuf, timeX, curY + 6);
@@ -1432,7 +1466,7 @@ void drawRecipesListScreen(bool fullRedraw) {
             char h1Buf[16], h2Buf[16], tBuf[16];
             snprintf(h1Buf, sizeof(h1Buf), "%.0fC", recipes[idx].h1_setpoint_c);
             snprintf(h2Buf, sizeof(h2Buf), "%.0fC", recipes[idx].h2_setpoint_c);
-            snprintf(tBuf, sizeof(tBuf), "%us", (unsigned)recipes[idx].process_time_sec);
+            snprintf(tBuf, sizeof(tBuf), "%u", (unsigned)recipes[idx].process_time_sec);
             tft.drawString(h1Buf, h1X, curY + 6);
             tft.drawString(h2Buf, h2X, curY + 6);
             tft.drawString(tBuf, timeX, curY + 6);
@@ -1519,7 +1553,8 @@ void drawProgramEditScreen(bool fullRedraw) {
     snprintf(valBuffers[0], sizeof(valBuffers[0]), "%s", rec.name);
     snprintf(valBuffers[1], sizeof(valBuffers[1]), "%.1f C", rec.h1_setpoint_c);
     snprintf(valBuffers[2], sizeof(valBuffers[2]), "%.1f C", rec.h2_setpoint_c);
-    snprintf(valBuffers[3], sizeof(valBuffers[3]), "%u s", (unsigned)rec.process_time_sec);
+    uint32_t tSec = TIMER_UNITS_TO_SECONDS(rec.process_time_sec);
+    snprintf(valBuffers[3], sizeof(valBuffers[3]), "%u (%02u:%02u)", (unsigned)rec.process_time_sec, (unsigned)(tSec / 60), (unsigned)(tSec % 60));
     snprintf(valBuffers[4], sizeof(valBuffers[4]), "%+.1f C", rec.temp_tolerance_c);
     snprintf(valBuffers[5], sizeof(valBuffers[5]), "%+.1f %%", rec.h1_temp_offset_pct);
     snprintf(valBuffers[6], sizeof(valBuffers[6]), "%+.1f %%", rec.h2_temp_offset_pct);
@@ -2340,6 +2375,27 @@ void updateTFTDisplay() {
         s_lastForceRemaining = 0xFFFFFFFF;
     }
 
+    // Draw Emergency Stop popup overlay if active
+    static bool s_estopDrawn = false;
+    if (sysStatus.emergency_stop_active) {
+        int w = 300; int h = 76;
+        int x = (320 - w) / 2; int y = (240 - h) / 2;
+        if (!s_estopDrawn) {
+            tft.fillRect(x - 4, y - 4, w + 8, h + 8, TFT_RED);
+            tft.fillRect(x - 2, y - 2, w + 4, h + 4, TFT_BLACK);
+            tft.setFreeFont(FONT_FREE_BOLD_9);
+            tft.setTextColor(TFT_RED, TFT_BLACK);
+            tft.drawString("EMERGENCY STOP ACTIVATED!", x + 10, y + 10);
+            tft.setTextColor(TFT_WHITE, TFT_BLACK);
+            tft.drawString("ALL OUTPUTS SHUT DOWN", x + 10, y + 32);
+            tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+            tft.drawString("[OK]: Clear / Dismiss", x + 10, y + 54);
+            s_estopDrawn = true;
+        }
+    } else {
+        s_estopDrawn = false;
+    }
+
     // process RTC blink pattern (non-blocking)
     if (rtcBlinkActive) {
         if ((int32_t)(millis() - rtcBlinkNextToggle) >= 0) {
@@ -2417,6 +2473,8 @@ static void handleApiStatus() {
     json += "\"home_limit\":" + String(sysStatus.home_limit_active ? "true" : "false") + ",";
     json += "\"motor_down\":" + String(sysStatus.motor_down_running ? "true" : "false") + ",";
     json += "\"motor_up\":" + String(sysStatus.motor_up_running ? "true" : "false") + ",";
+    json += "\"torque_motor\":" + String(sysStatus.torque_motor_running ? "true" : "false") + ",";
+    json += "\"emergency_stop\":" + String(sysStatus.emergency_stop_active ? "true" : "false") + ",";
     json += "\"ssr1\":" + String(digitalRead(PIN_SSR_1) ? "true" : "false") + ",";
     json += "\"ssr2\":" + String(digitalRead(PIN_SSR_2) ? "true" : "false") + ",";
     json += "\"active_prog_idx\":" + String(sysStatus.active_program_idx) + ",";
@@ -2574,6 +2632,22 @@ static void handleApiControl() {
         sysStatus.forceStartPending = false;
         sysStatus.forceStartUntilMs = 0;
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Force start canceled\"}");
+        return;
+    } else if (action.equalsIgnoreCase("emergency_stop")) {
+        sysStatus.emergency_stop_active = true;
+        safeDigitalWrite(PIN_SSR_1, LOW);
+        safeDigitalWrite(PIN_SSR_2, LOW);
+        safeDigitalWrite(PIN_PNEUMATIC, LOW);
+        safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
+        sysStatus.torque_motor_running = false;
+        sysStatus.motor_up_running = false;
+        sysStatus.motor_down_running = false;
+        sysStatus.remaining_time_sec = 0;
+        sysStatus.forceStartActive = false;
+        sysStatus.forceStartPending = false;
+        currentScreen = SCREEN_HOME;
+        transitionToState(STATE_IDLE);
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Emergency stop executed\"}");
         return;
     } else if (action.equalsIgnoreCase("reset_alarm") || action.equalsIgnoreCase("stop")) {
         if (currentScreen != SCREEN_HOME) {

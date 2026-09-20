@@ -8,7 +8,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v3.1"
+#define FIRMWARE_VERSION "v3.2"
 #endif
 
 // Enable WiFi & WebServer support (set to 0 for bench testing to save ~500 KB flash)
@@ -142,9 +142,10 @@ extern bool g_simHomeLimit;
 #define PIN_HX711_DOUT 36
 #define PIN_HX711_SCK 12
 
-// Limit Switches - Active LOW (External 10k pull-ups required on GPIO 34/35)
+// Limit Switches & Emergency Stop - Active LOW (External 10k pull-ups required on GPIO 34/35)
 #define PIN_DOWN_LIMIT 34
-#define PIN_HOME_LIMIT 35
+#define PIN_EMERGENCY_STOP 35 // Dedicated hardware Emergency Stop button (active LOW)
+#define PIN_HOME_LIMIT PIN_EMERGENCY_STOP // Compatibility alias
 
 // Push Buttons
 #define PIN_BTN_UP 32
@@ -153,12 +154,13 @@ extern bool g_simHomeLimit;
 #define PIN_BTN_OK 26
 #define PIN_BTN_LEFT 27
 
-// SSR & Pneumatic Actuator Outputs
+// SSR, Pneumatic Actuator & Torque Motor Outputs
 #define PIN_SSR_1 16
 #define PIN_SSR_2 17
 #define PIN_PNEUMATIC 21       // Solenoid valve output for pneumatic cylinder
 #define PIN_MOTOR_DOWN PIN_PNEUMATIC // Compatibility alias
-#define PIN_MOTOR_UP 22        // Unused in pneumatic configuration
+#define PIN_TORQUE_MOTOR 22    // Torque motor relay/driver output (runs during process timer)
+#define PIN_MOTOR_UP PIN_TORQUE_MOTOR // Compatibility alias
 
 // PT100 Constants & Wire Mode
 #ifndef MAX31865_WIRE_MODE
@@ -190,6 +192,10 @@ extern bool g_simHomeLimit;
 #ifndef PNEUMATIC_RETRACT_DELAY_MS
 #define PNEUMATIC_RETRACT_DELAY_MS 1000 // Retraction settling time before saving record
 #endif
+
+// 100-Base Process Timer Conversion: 100 units = 1 min (60 seconds)
+#define TIMER_UNITS_TO_SECONDS(u) (((uint32_t)(u) * 60UL) / 100UL)
+#define SECONDS_TO_TIMER_UNITS(s) (((uint32_t)(s) * 100UL) / 60UL)
 
 #ifndef LIMIT_SWITCH_DOWN_TIMEOUT_SEC
 #define LIMIT_SWITCH_DOWN_TIMEOUT_SEC PNEUMATIC_DOWN_TIMEOUT_SEC
@@ -252,6 +258,8 @@ struct SystemStatus_t {
   bool home_limit_active;
   bool motor_down_running;
   bool motor_up_running;
+  bool torque_motor_running;
+  bool emergency_stop_active;
   uint8_t active_program_idx;
   char alarm_msg[32];
 

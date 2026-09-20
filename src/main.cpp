@@ -163,15 +163,15 @@ void setup() {
     safePinMode(PIN_SSR_1, OUTPUT);
     safePinMode(PIN_SSR_2, OUTPUT);
     safePinMode(PIN_PNEUMATIC, OUTPUT);
-    safePinMode(PIN_MOTOR_UP, OUTPUT);
+    safePinMode(PIN_TORQUE_MOTOR, OUTPUT);
     safeDigitalWrite(PIN_SSR_1, LOW);
     safeDigitalWrite(PIN_SSR_2, LOW);
     safeDigitalWrite(PIN_PNEUMATIC, LOW);
-    safeDigitalWrite(PIN_MOTOR_UP, LOW);
+    safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
 
     // Sensor & Switch Inputs (safe-checked: GPIO 34/35 are input-only with external pull-ups)
     safePinMode(PIN_DOWN_LIMIT, INPUT);
-    safePinMode(PIN_HOME_LIMIT, INPUT);
+    safePinMode(PIN_EMERGENCY_STOP, INPUT);
 #if ENABLE_PHYSICAL_BUTTONS
     safePinMode(PIN_BTN_UP, INPUT_PULLUP);
     safePinMode(PIN_BTN_DOWN, INPUT_PULLUP);

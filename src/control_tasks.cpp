@@ -73,10 +73,34 @@ void Task_SafetyAndControl(void *pvParameters) {
         }
         sysStatus.home_limit_active = (home_deb_count >= 2);
 
+        // Dedicated hardware Emergency Stop check (GPIO 35, active LOW with external pull-up)
+#ifndef SIMULATED_HARDWARE
+        int raw_estop_pin = digitalRead(PIN_EMERGENCY_STOP);
+#else
+        int raw_estop_pin = HIGH;
+#endif
+        bool raw_estop_active = (raw_estop_pin == LOW);
+        if (raw_estop_active || sysStatus.emergency_stop_active) {
+            sysStatus.emergency_stop_active = true;
+            safeDigitalWrite(PIN_SSR_1, LOW);
+            safeDigitalWrite(PIN_SSR_2, LOW);
+            safeDigitalWrite(PIN_PNEUMATIC, LOW);
+            safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
+            sysStatus.torque_motor_running = false;
+            sysStatus.motor_up_running = false;
+            sysStatus.motor_down_running = false;
+            sysStatus.remaining_time_sec = 0;
+            sysStatus.forceStartActive = false;
+            if (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT) {
+                snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "EMERGENCY STOP PRESSED");
+                transitionToState(STATE_IDLE);
+            }
+        }
+
         // Defensive array bounds clamping
         if (sysStatus.active_program_idx >= 10) sysStatus.active_program_idx = 0;
 
-        // Note: Upper limit switch is not used in pneumatic configuration (automatic return home).
+        // Note: Upper limit switch is replaced by Emergency Stop; pneumatic returns home automatically.
 
 #if ENABLE_HX711
   #if INPUT_SERIAL_SIMULATOR
@@ -110,7 +134,10 @@ void Task_SafetyAndControl(void *pvParameters) {
             case STATE_IDLE:
             case STATE_READY:
                 safeDigitalWrite(PIN_PNEUMATIC, LOW);
-                safeDigitalWrite(PIN_MOTOR_UP, LOW);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
+                sysStatus.torque_motor_running = false;
+                sysStatus.motor_up_running = false;
+                sysStatus.motor_down_running = false;
                 break;
 
             case STATE_SAFETY_CHECK:
@@ -151,18 +178,28 @@ void Task_SafetyAndControl(void *pvParameters) {
 
             case STATE_DOWN_LIMIT:
                 safeDigitalWrite(PIN_PNEUMATIC, HIGH);
-                if (sysStatus.forceStartActive || !sysStatus.start_mode_auto) {
-                    // Force-start or Manual mode: do NOT wait for temp setpoint, proceed directly to timer
-                    transitionToState(STATE_TEMPERATURE_READY);
-                } else {
-                    transitionToState(STATE_HEAT_TO_SETPOINT);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
+                sysStatus.motor_down_running = true;
+                sysStatus.torque_motor_running = false;
+                {
+                    float tol = fabsf(recipes[sysStatus.active_program_idx].temp_tolerance_c);
+                    bool inTol = (fabsf(sysStatus.h1_actual_c - recipes[sysStatus.active_program_idx].h1_setpoint_c) <= tol &&
+                                  fabsf(sysStatus.h2_actual_c - recipes[sysStatus.active_program_idx].h2_setpoint_c) <= tol);
+                    if (sysStatus.forceStartActive || inTol || !sysStatus.start_mode_auto) {
+                        // Force-start, already in tolerance, or Manual mode: proceed directly to timer
+                        transitionToState(STATE_TEMPERATURE_READY);
+                    } else {
+                        transitionToState(STATE_HEAT_TO_SETPOINT);
+                    }
                 }
                 break;
 
             case STATE_HEAT_TO_SETPOINT: {
                 safeDigitalWrite(PIN_PNEUMATIC, HIGH);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
                 if (!sysStatus.down_limit_active) {
                     safeDigitalWrite(PIN_PNEUMATIC, LOW);
+                    safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
                     sysStatus.remaining_time_sec = 0;
                     showLimitSwitchWarning("Down limit opened during heating!");
                     snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
@@ -171,9 +208,9 @@ void Task_SafetyAndControl(void *pvParameters) {
                     transitionToState(STATE_MOVE_UP);
                     break;
                 }
-                float tol = fabs(recipes[sysStatus.active_program_idx].temp_tolerance_c);
-                if (fabs(sysStatus.h1_actual_c - recipes[sysStatus.active_program_idx].h1_setpoint_c) <= tol &&
-                    fabs(sysStatus.h2_actual_c - recipes[sysStatus.active_program_idx].h2_setpoint_c) <= tol) {
+                float tol = fabsf(recipes[sysStatus.active_program_idx].temp_tolerance_c);
+                if (fabsf(sysStatus.h1_actual_c - recipes[sysStatus.active_program_idx].h1_setpoint_c) <= tol &&
+                    fabsf(sysStatus.h2_actual_c - recipes[sysStatus.active_program_idx].h2_setpoint_c) <= tol) {
                     transitionToState(STATE_TEMPERATURE_READY);
                 }
                 break;
@@ -181,8 +218,10 @@ void Task_SafetyAndControl(void *pvParameters) {
 
             case STATE_TEMPERATURE_READY:
                 safeDigitalWrite(PIN_PNEUMATIC, HIGH);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
                 if (!sysStatus.down_limit_active) {
                     safeDigitalWrite(PIN_PNEUMATIC, LOW);
+                    safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
                     sysStatus.remaining_time_sec = 0;
                     showLimitSwitchWarning("Down limit opened before timer!");
                     snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
@@ -191,15 +230,23 @@ void Task_SafetyAndControl(void *pvParameters) {
                     transitionToState(STATE_MOVE_UP);
                     break;
                 }
-                sysStatus.remaining_time_sec = recipes[sysStatus.active_program_idx].process_time_sec;
+                // Convert 100-base units to seconds: 100 units = 1 min (60 seconds)
+                sysStatus.remaining_time_sec = TIMER_UNITS_TO_SECONDS(recipes[sysStatus.active_program_idx].process_time_sec);
                 transitionToState(STATE_PROCESS_TIMER);
                 break;
 
             case STATE_PROCESS_TIMER:
-                // Keep pneumatic ON until timer expired!
+                // Keep pneumatic ON AND run torque motor for timer duration!
                 safeDigitalWrite(PIN_PNEUMATIC, HIGH);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, HIGH);
+                sysStatus.torque_motor_running = true;
+                sysStatus.motor_up_running = true;
+                sysStatus.motor_down_running = true;
                 if (!sysStatus.down_limit_active) {
                     safeDigitalWrite(PIN_PNEUMATIC, LOW);
+                    safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
+                    sysStatus.torque_motor_running = false;
+                    sysStatus.motor_up_running = false;
                     sysStatus.remaining_time_sec = 0;
                     showLimitSwitchWarning("Down limit switch opened!");
                     snprintf(sysStatus.alarm_msg, sizeof(sysStatus.alarm_msg), "DOWN LIMIT SWITCH OPEN");
@@ -214,18 +261,25 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_TIMER_COMPLETE:
-                // Timer expired: turn OFF SSRs and turn OFF pneumatic (cylinder returns home)
+                // Timer expired: turn OFF SSRs, turn OFF torque motor, and turn OFF pneumatic (cylinder returns home)
                 safeDigitalWrite(PIN_SSR_1, LOW);
                 safeDigitalWrite(PIN_SSR_2, LOW);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
                 safeDigitalWrite(PIN_PNEUMATIC, LOW);
+                sysStatus.torque_motor_running = false;
+                sysStatus.motor_up_running = false;
+                sysStatus.motor_down_running = false;
                 movement_timer_ms = millis();
                 transitionToState(STATE_MOVE_UP);
                 break;
 
             case STATE_MOVE_UP:
                 // Pneumatic is OFF (LOW); cylinder automatically retracts to home via spring/exhaust.
-                // No upper limit switch needed; wait for retraction settle delay.
                 safeDigitalWrite(PIN_PNEUMATIC, LOW);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
+                sysStatus.torque_motor_running = false;
+                sysStatus.motor_up_running = false;
+                sysStatus.motor_down_running = false;
                 if (millis() - movement_timer_ms >= PNEUMATIC_RETRACT_DELAY_MS) {
                     transitionToState(STATE_SAVE_RECORD);
                 }
@@ -272,9 +326,12 @@ void Task_SafetyAndControl(void *pvParameters) {
 
             case STATE_ALARM_FAULT:
                 safeDigitalWrite(PIN_PNEUMATIC, LOW);
-                safeDigitalWrite(PIN_MOTOR_UP, LOW);
+                safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
                 safeDigitalWrite(PIN_SSR_1, LOW);
                 safeDigitalWrite(PIN_SSR_2, LOW);
+                sysStatus.torque_motor_running = false;
+                sysStatus.motor_up_running = false;
+                sysStatus.motor_down_running = false;
                 break;
         }
 
