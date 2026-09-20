@@ -43,10 +43,10 @@ void Task_SafetyAndControl(void *pvParameters) {
         esp_task_wdt_reset();
         DEBUG_TP_HIGH();
 
-        // Continuous Over-Temperature Safety Trip (>350°C)
+        // Continuous Over-Temperature Safety Trip
         if ((sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT) &&
             (sysStatus.h1_actual_c > 350.0f || sysStatus.h2_actual_c > 350.0f)) {
-            triggerSafetyShutdown("OVER-TEMPERATURE TRIP (>350 C)");
+            triggerSafetyShutdown("OVER-TEMPERATURE TRIP");
         }
 
         // Read physical limit switches with debounce (Active LOW) + Virtual Simulator override
@@ -73,14 +73,17 @@ void Task_SafetyAndControl(void *pvParameters) {
         }
         sysStatus.home_limit_active = (home_deb_count >= 2);
 
-        // Dedicated hardware Emergency Stop check (GPIO 35, active LOW with external pull-up)
+        // Dedicated hardware Emergency Stop check (GPIO 35, active LOW) + Virtual Simulator override
 #ifndef SIMULATED_HARDWARE
         int raw_estop_pin = digitalRead(PIN_EMERGENCY_STOP);
 #else
         int raw_estop_pin = HIGH;
 #endif
-        bool raw_estop_active = (raw_estop_pin == LOW);
-        if (raw_estop_active || sysStatus.emergency_stop_active) {
+        static bool s_last_estop_pin_active = false;
+        bool raw_estop_active = (raw_estop_pin == LOW) || g_simEmergencyStop;
+
+        // Edge-triggered hardware press or explicit software activation
+        if ((raw_estop_active && !s_last_estop_pin_active) || sysStatus.emergency_stop_active) {
             sysStatus.emergency_stop_active = true;
             safeDigitalWrite(PIN_SSR_1, LOW);
             safeDigitalWrite(PIN_SSR_2, LOW);
@@ -96,6 +99,7 @@ void Task_SafetyAndControl(void *pvParameters) {
                 transitionToState(STATE_IDLE);
             }
         }
+        s_last_estop_pin_active = raw_estop_active;
 
         // Defensive array bounds clamping
         if (sysStatus.active_program_idx >= 10) sysStatus.active_program_idx = 0;

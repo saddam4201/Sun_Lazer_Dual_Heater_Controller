@@ -453,18 +453,12 @@ void handleButtonInputs() {
     }
 #endif
 
-    // If Emergency Stop is active, any button press clears it once physical switch is released
+    // If Emergency Stop is active, any button press clears it
     if (sysStatus.emergency_stop_active) {
-#ifndef SIMULATED_HARDWARE
-        int raw_estop_pin = digitalRead(PIN_EMERGENCY_STOP);
-#else
-        int raw_estop_pin = HIGH;
-#endif
-        if (raw_estop_pin != LOW) {
-            if (btnOk || btnLeft || btnRight || btnUp || btnDown) {
-                sysStatus.emergency_stop_active = false;
-                transitionToState(STATE_READY);
-            }
+        if (btnOk || btnLeft || btnRight || btnUp || btnDown) {
+            sysStatus.emergency_stop_active = false;
+            g_simEmergencyStop = false;
+            transitionToState(STATE_READY);
         }
         return;
     }
@@ -500,25 +494,29 @@ void handleButtonInputs() {
 
         if (sysStatus.currentState == STATE_IDLE || sysStatus.currentState == STATE_READY) {
             bool allowStart = true;
-            ProgramRecipe_t &prec = recipes[sysStatus.active_program_idx];
-            float tol = fabsf(prec.temp_tolerance_c);
+            if (sysStatus.start_mode_auto) {
+                // In AUTO mode: wait for temperatures to reach setpoint within tolerance
+                ProgramRecipe_t &prec = recipes[sysStatus.active_program_idx];
+                float tol = fabsf(prec.temp_tolerance_c);
 #if ENABLE_H1
-            if (fabsf(sysStatus.h1_actual_c - prec.h1_setpoint_c) > tol) {
-                allowStart = false;
-            }
+                if (fabsf(sysStatus.h1_actual_c - prec.h1_setpoint_c) > tol) {
+                    allowStart = false;
+                }
 #endif
 #if ENABLE_H2
-            if (fabsf(sysStatus.h2_actual_c - prec.h2_setpoint_c) > tol) {
-                allowStart = false;
-            }
+                if (fabsf(sysStatus.h2_actual_c - prec.h2_setpoint_c) > tol) {
+                    allowStart = false;
+                }
 #endif
+            }
+            // In MANUAL mode: allowStart remains true (starts immediately without waiting for setpoint)
 
             if (allowStart) {
                 sysStatus.forceStartActive = false;
                 currentScreen = SCREEN_HOME;
                 transitionToState(STATE_SAFETY_CHECK);
             } else {
-                // Temperature outside tolerance: offer force-start confirmation
+                // In AUTO mode with temp outside tolerance: offer force-start confirmation
                 currentScreen = SCREEN_HOME;
                 sysStatus.forceStartPending = true;
                 sysStatus.forceStartUntilMs = millis() + 8000; // 8s window to confirm
@@ -1309,30 +1307,30 @@ void drawSettingsMenu(bool fullRedraw) {
     if (!needsRedraw) return;
 
     struct SettingItem_t {
-        char name[10];  // exactly 9 characters + null terminator
-        char val[12];   // up to 9 characters + null terminator
+        char name[20];
+        char val[16];
     };
     SettingItem_t menuItems[7];
-    strncpy(menuItems[0].name, "RECIPES  ", 10);
-    strncpy(menuItems[0].val,  "SELECT", 12);
+    strncpy(menuItems[0].name, "Recipes", sizeof(menuItems[0].name));
+    strncpy(menuItems[0].val,  "Select", sizeof(menuItems[0].val));
 
-    strncpy(menuItems[1].name, "STARTMODE", 10);
-    strncpy(menuItems[1].val,  sysStatus.start_mode_auto ? "AUTO" : "MANUAL", 12);
+    strncpy(menuItems[1].name, "Start Mode", sizeof(menuItems[1].name));
+    strncpy(menuItems[1].val,  sysStatus.start_mode_auto ? "Auto" : "Manual", sizeof(menuItems[1].val));
 
-    strncpy(menuItems[2].name, "RELAYTYPE", 10);
-    strncpy(menuItems[2].val,  g_relayType == RELAY_TYPE_SSR ? "SSR" : "NORMAL", 12);
+    strncpy(menuItems[2].name, "Relay Type", sizeof(menuItems[2].name));
+    strncpy(menuItems[2].val,  g_relayType == RELAY_TYPE_SSR ? "SSR" : "Normal", sizeof(menuItems[2].val));
 
-    strncpy(menuItems[3].name, "PIDTUNING", 10);
-    strncpy(menuItems[3].val,  "PID COEFF", 12);
+    strncpy(menuItems[3].name, "PID Tuning", sizeof(menuItems[3].name));
+    strncpy(menuItems[3].val,  "Coeffs", sizeof(menuItems[3].val));
 
-    strncpy(menuItems[4].name, "DATE-TIME", 10);
-    strncpy(menuItems[4].val,  "DATE/TIME", 12);
+    strncpy(menuItems[4].name, "Date & Time", sizeof(menuItems[4].name));
+    strncpy(menuItems[4].val,  "Adjust", sizeof(menuItems[4].val));
 
-    strncpy(menuItems[5].name, "RESET-DEF", 10);
-    strncpy(menuItems[5].val,  "DEFAULT", 12);
+    strncpy(menuItems[5].name, "Reset Defaults", sizeof(menuItems[5].name));
+    strncpy(menuItems[5].val,  "Default", sizeof(menuItems[5].val));
 
-    strncpy(menuItems[6].name, "EXIT-HOME", 10);
-    strncpy(menuItems[6].val,  "TO HOME", 12);
+    strncpy(menuItems[6].name, "Exit to Home", sizeof(menuItems[6].name));
+    strncpy(menuItems[6].val,  "Home", sizeof(menuItems[6].val));
 
     // Show 4 items per page in scroll window
     if (settingsMenuIdx < topIdx) topIdx = settingsMenuIdx;
@@ -1341,31 +1339,29 @@ void drawSettingsMenu(bool fullRedraw) {
     if (topIdx < 0) topIdx = 0;
 
     const int startY = 44;
-    const int cardH = 34;
-    const int gap = 5;
+    const int cardH = 36;
+    const int gap = 4;
 
+    tft.setFreeFont(FONT_FREE_BOLD_9);
     for (uint8_t i = 0; i < 4; i++) {
         uint8_t itemIdx = topIdx + i;
         if (itemIdx >= 7) break;
         int curY = startY + i * (cardH + gap);
         bool isSel = (settingsMenuIdx == itemIdx);
 
-        // Card frame
+        // Card frame matching recipe screens
         tft.drawRoundRect(10, curY, 300, cardH, 4, isSel ? TFT_GREEN : 0x4A69);
         tft.fillRect(11, curY + 1, 298, cardH - 2, isSel ? 0x10C2 : TFT_BLACK);
 
-        tft.setFreeFont(FONT_FREE_BOLD_12);
-        tft.setTextColor(isSel ? TFT_GREEN : TFT_WHITE, isSel ? 0x10C2 : TFT_BLACK);
-
-        // Fixed-width 2-column alignment (1 cursor + 9-char name + colon at fixed x=160 + up to 9-char value at x=175)
+        tft.setTextColor(isSel ? TFT_GREEN : TFT_LIGHTGREY, isSel ? 0x10C2 : TFT_BLACK);
         if (isSel) {
-            tft.drawString(">", 16, curY + 7);
+            tft.drawString(">", 16, curY + 9);
         }
-        tft.drawString(menuItems[itemIdx].name, 30, curY + 7);
-        tft.drawString(":", 160, curY + 7);
-        tft.drawString(menuItems[itemIdx].val, 175, curY + 7);
+        tft.drawString(menuItems[itemIdx].name, 28, curY + 9);
+        tft.drawString(":", 170, curY + 9);
+        tft.setTextColor(isSel ? TFT_YELLOW : TFT_WHITE, isSel ? 0x10C2 : TFT_BLACK);
+        tft.drawString(menuItems[itemIdx].val, 185, curY + 9);
     }
-    tft.setFreeFont(FONT_FREE_BOLD_9);
 
     last_sel = settingsMenuIdx;
     last_relay = g_relayType;

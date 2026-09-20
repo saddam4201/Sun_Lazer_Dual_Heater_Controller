@@ -8,7 +8,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v3.2"
+#define FIRMWARE_VERSION "v3.3"
 #endif
 
 // Enable WiFi & WebServer support (set to 0 for bench testing to save ~500 KB flash)
@@ -109,9 +109,10 @@ enum AppButtonMask_t {
 #define LIMIT_SWITCH_ACTIVE_LOW 1
 #endif
 
-// Virtual limit switch simulator overrides (for bench testing via Virtual TFT)
+// Virtual limit switch and emergency stop simulator overrides (for bench testing via Virtual TFT)
 extern bool g_simDownLimit;
 extern bool g_simHomeLimit;
+extern bool g_simEmergencyStop;
 
 // Per-device compile-time toggles (set to 0 to disable device and use
 // default/simulated values)

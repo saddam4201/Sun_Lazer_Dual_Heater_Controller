@@ -110,6 +110,7 @@ float g_h1_temp_manip_pct = 0.0f;
 float g_h2_temp_manip_pct = 0.0f;
 bool g_simDownLimit = false;
 bool g_simHomeLimit = false;
+bool g_simEmergencyStop = false;
 
 const char *getTorqueUnitName(TorqueUnit_t unit) {
     switch (unit) {
@@ -169,9 +170,9 @@ void setup() {
     safeDigitalWrite(PIN_PNEUMATIC, LOW);
     safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
 
-    // Sensor & Switch Inputs (safe-checked: GPIO 34/35 are input-only with external pull-ups)
+    // Sensor & Switch Inputs (safe-checked: GPIO 34/35)
     safePinMode(PIN_DOWN_LIMIT, INPUT);
-    safePinMode(PIN_EMERGENCY_STOP, INPUT);
+    safePinMode(PIN_EMERGENCY_STOP, INPUT_PULLUP);
 #if ENABLE_PHYSICAL_BUTTONS
     safePinMode(PIN_BTN_UP, INPUT_PULLUP);
     safePinMode(PIN_BTN_DOWN, INPUT_PULLUP);
