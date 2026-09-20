@@ -73,15 +73,24 @@ void Task_SafetyAndControl(void *pvParameters) {
         }
         sysStatus.home_limit_active = (home_deb_count >= 2);
 
+        // Defensive array bounds clamping
+        if (sysStatus.active_program_idx >= 10) sysStatus.active_program_idx = 0;
+
+        // Negative Case: Limit switch conflict (both active simultaneously indicates a hardware wiring fault)
+        if (sysStatus.down_limit_active && sysStatus.home_limit_active &&
+            sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_ALARM_FAULT) {
+            triggerSafetyShutdown("LIMIT SWITCH CONFLICT");
+        }
+
 #if ENABLE_HX711
   #if INPUT_SERIAL_SIMULATOR
         // Use simulated torque value set by terminal commands (sysStatus.current_torque_nm)
         float raw_torque = fabsf(sysStatus.current_torque_nm);
         sysStatus.current_torque_nm = raw_torque;
         if (raw_torque > sysStatus.max_torque_nm) sysStatus.max_torque_nm = raw_torque;
-        if (raw_torque > MAX_TORQUE_OVERLOAD_NM &&
+        if ((isnan(raw_torque) || raw_torque > MAX_TORQUE_OVERLOAD_NM) &&
             (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT)) {
-            triggerSafetyShutdown("TORQUE OVERLOAD TRIP");
+            triggerSafetyShutdown(isnan(raw_torque) ? "TORQUE SENSOR FAULT (NAN)" : "TORQUE OVERLOAD TRIP");
         }
   #else
         if (torqueScale.is_ready()) {
@@ -90,9 +99,9 @@ void Task_SafetyAndControl(void *pvParameters) {
             // track max torque during a run
             if (raw_torque > sysStatus.max_torque_nm) sysStatus.max_torque_nm = raw_torque;
 
-            if (raw_torque > MAX_TORQUE_OVERLOAD_NM &&
+            if ((isnan(raw_torque) || raw_torque > MAX_TORQUE_OVERLOAD_NM) &&
                (sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT)) {
-                triggerSafetyShutdown("TORQUE OVERLOAD TRIP");
+                triggerSafetyShutdown(isnan(raw_torque) ? "TORQUE SENSOR FAULT (NAN)" : "TORQUE OVERLOAD TRIP");
             }
         }
   #endif
