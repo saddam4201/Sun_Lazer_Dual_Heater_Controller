@@ -1255,30 +1255,30 @@ void drawSettingsMenu(bool fullRedraw) {
     if (!needsRedraw) return;
 
     struct SettingItem_t {
-        char name[7];  // exactly 6 characters + null terminator
-        char val[16];
+        char name[10];  // exactly 9 characters + null terminator
+        char val[12];   // up to 9 characters + null terminator
     };
     SettingItem_t menuItems[7];
-    strncpy(menuItems[0].name, "RECIPE", 7);
-    strncpy(menuItems[0].val,  "SELECT", 16);
+    strncpy(menuItems[0].name, "RECIPES  ", 10);
+    strncpy(menuItems[0].val,  "SELECT", 12);
 
-    strncpy(menuItems[1].name, "S-MODE", 7);
-    strncpy(menuItems[1].val,  sysStatus.start_mode_auto ? "AUTO" : "MANUAL", 16);
+    strncpy(menuItems[1].name, "STARTMODE", 10);
+    strncpy(menuItems[1].val,  sysStatus.start_mode_auto ? "AUTO" : "MANUAL", 12);
 
-    strncpy(menuItems[2].name, "RELAY ", 7);
-    strncpy(menuItems[2].val,  g_relayType == RELAY_TYPE_SSR ? "SSR" : "NORMAL", 16);
+    strncpy(menuItems[2].name, "RELAYTYPE", 10);
+    strncpy(menuItems[2].val,  g_relayType == RELAY_TYPE_SSR ? "SSR" : "NORMAL", 12);
 
-    strncpy(menuItems[3].name, "TUNING", 7);
-    strncpy(menuItems[3].val,  "PID COEFF", 16);
+    strncpy(menuItems[3].name, "PIDTUNING", 10);
+    strncpy(menuItems[3].val,  "PID COEFF", 12);
 
-    strncpy(menuItems[4].name, "RTCSET", 7);
-    strncpy(menuItems[4].val,  "DATE/TIME", 16);
+    strncpy(menuItems[4].name, "DATE-TIME", 10);
+    strncpy(menuItems[4].val,  "DATE/TIME", 12);
 
-    strncpy(menuItems[5].name, "RESET ", 7);
-    strncpy(menuItems[5].val,  "DEFAULT", 16);
+    strncpy(menuItems[5].name, "RESET-DEF", 10);
+    strncpy(menuItems[5].val,  "DEFAULT", 12);
 
-    strncpy(menuItems[6].name, "EXIT  ", 7);
-    strncpy(menuItems[6].val,  "TO HOME", 16);
+    strncpy(menuItems[6].name, "EXIT-HOME", 10);
+    strncpy(menuItems[6].val,  "TO HOME", 12);
 
     // Show 4 items per page in scroll window
     if (settingsMenuIdx < topIdx) topIdx = settingsMenuIdx;
@@ -1303,13 +1303,13 @@ void drawSettingsMenu(bool fullRedraw) {
         tft.setFreeFont(FONT_FREE_BOLD_12);
         tft.setTextColor(isSel ? TFT_GREEN : TFT_WHITE, isSel ? 0x10C2 : TFT_BLACK);
 
-        // Fixed-width 2-column alignment (6-char name, colon at x=116, value at x=130)
+        // Fixed-width 2-column alignment (1 cursor + 9-char name + colon at fixed x=160 + up to 9-char value at x=175)
         if (isSel) {
             tft.drawString(">", 16, curY + 7);
         }
-        tft.drawString(menuItems[itemIdx].name, 32, curY + 7);
-        tft.drawString(":", 116, curY + 7);
-        tft.drawString(menuItems[itemIdx].val, 130, curY + 7);
+        tft.drawString(menuItems[itemIdx].name, 30, curY + 7);
+        tft.drawString(":", 160, curY + 7);
+        tft.drawString(menuItems[itemIdx].val, 175, curY + 7);
     }
     tft.setFreeFont(FONT_FREE_BOLD_9);
 

@@ -8,7 +8,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v2.9"
+#define FIRMWARE_VERSION "v3.0"
 #endif
 
 // Enable WiFi & WebServer support (set to 0 for bench testing to save ~500 KB flash)

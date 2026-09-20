@@ -97,7 +97,7 @@ ILI9341_ORANGE      = 0xFDA0
 # MAIN APPLICATION
 # ==============================================================================
 FIRMWARE_NAME = "Sun Lazer Dual Heater Controller"
-APP_VERSION   = "v2.8"
+APP_VERSION   = "v3.0"
 
 
 class VirtualTFTApp(tk.Tk):
