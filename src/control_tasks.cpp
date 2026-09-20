@@ -49,9 +49,10 @@ void Task_SafetyAndControl(void *pvParameters) {
             triggerSafetyShutdown("OVER-TEMPERATURE TRIP");
         }
 
-        // Read physical limit switches with debounce (Active LOW) + Virtual Simulator override
+        // Read physical limit switches with 100ms debounce (Active LOW) + Virtual Simulator override
         static uint8_t down_deb_count = 0;
         static uint8_t home_deb_count = 0;
+        const uint8_t deb_thresh = (LIMIT_SWITCH_DEBOUNCE_MS / 10); // 10 samples @ 10ms = 100ms
 
         int raw_down_pin = safeDigitalRead(PIN_DOWN_LIMIT);
         int raw_home_pin = safeDigitalRead(PIN_HOME_LIMIT);
@@ -60,18 +61,26 @@ void Task_SafetyAndControl(void *pvParameters) {
         bool raw_home_active = (raw_home_pin == (LIMIT_SWITCH_ACTIVE_LOW ? LOW : HIGH)) || g_simHomeLimit;
 
         if (raw_down_active) {
-            if (down_deb_count < 2) down_deb_count++;
+            if (down_deb_count < deb_thresh) down_deb_count++;
         } else {
-            down_deb_count = 0;
+            if (down_deb_count > 0) down_deb_count--;
         }
-        sysStatus.down_limit_active = (down_deb_count >= 2);
+        if (down_deb_count >= deb_thresh) {
+            sysStatus.down_limit_active = true;
+        } else if (down_deb_count == 0) {
+            sysStatus.down_limit_active = false;
+        }
 
         if (raw_home_active) {
-            if (home_deb_count < 2) home_deb_count++;
+            if (home_deb_count < deb_thresh) home_deb_count++;
         } else {
-            home_deb_count = 0;
+            if (home_deb_count > 0) home_deb_count--;
         }
-        sysStatus.home_limit_active = (home_deb_count >= 2);
+        if (home_deb_count >= deb_thresh) {
+            sysStatus.home_limit_active = true;
+        } else if (home_deb_count == 0) {
+            sysStatus.home_limit_active = false;
+        }
 
         // Dedicated hardware Emergency Stop check (GPIO 35, active LOW) + Virtual Simulator override
 #ifndef SIMULATED_HARDWARE

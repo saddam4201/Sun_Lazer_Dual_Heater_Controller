@@ -206,6 +206,10 @@ extern bool g_simEmergencyStop;
 #define LIMIT_SWITCH_HOME_TIMEOUT_SEC 30
 #endif
 
+#ifndef LIMIT_SWITCH_DEBOUNCE_MS
+#define LIMIT_SWITCH_DEBOUNCE_MS 100 // 100 ms limit switch debounce filter
+#endif
+
 // 13-State Machine Definition
 typedef enum {
   STATE_IDLE = 1,
