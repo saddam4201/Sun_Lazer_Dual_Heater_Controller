@@ -720,8 +720,9 @@ void handleButtonInputs() {
 
         case SCREEN_RECIPE_EDIT: {
             ProgramRecipe_t &rec = recipes[sysStatus.active_program_idx];
+            static ProgramRecipe_t s_backupRecipe;
             if (!s_inValueEditMode) {
-                // Navigation Mode: UP/DOWN moves highlight, RIGHT enters Value Edit Mode, LEFT saves & returns
+                // Navigation Mode: UP/DOWN moves highlight, RIGHT enters Value Edit Mode, LEFT returns
                 if (btnUp) {
                     if (selectedEditField > 0) selectedEditField--;
                 } else if (btnDown) {
@@ -737,10 +738,10 @@ void handleButtonInputs() {
                         s_nameFocus = 0;
                         currentScreen = SCREEN_NAME_EDIT;
                     } else {
+                        s_backupRecipe = rec; // Store backup to revert if cancelled
                         s_inValueEditMode = true; // Enter Value Edit Mode
                     }
                 } else if (btnLeft) {
-                    saveRecipeToNVS(sysStatus.active_program_idx);
                     currentScreen = SCREEN_RECIPES_LIST;
                 }
             } else {
@@ -801,9 +802,15 @@ void handleButtonInputs() {
                         rec.torque_unit = (rec.torque_unit == 0) ? 2 : (rec.torque_unit - 1);
                         g_torqueUnit = (TorqueUnit_t)rec.torque_unit;
                     }
-                } else if (btnRight || btnLeft) {
+                } else if (btnRight) {
+                    // Confirm & Save
                     saveRecipeToNVS(sysStatus.active_program_idx);
                     s_inValueEditMode = false; // Exit edit mode
+                } else if (btnLeft) {
+                    // Cancel: Revert changes without saving to NVS
+                    rec = s_backupRecipe;
+                    g_torqueUnit = (TorqueUnit_t)rec.torque_unit;
+                    s_inValueEditMode = false; // Exit edit mode without saving
                 }
             }
             break;
@@ -831,6 +838,11 @@ void handleButtonInputs() {
 
             // 2. Hold Left 2 sec (or Left+Right 2 sec): CANCEL operation immediately
             if (btnLeftHold2s) {
+                // Discard any edits: restore buffer from current saved recipe name
+                memset(s_nameEditBuf, ' ', sizeof(s_nameEditBuf));
+                s_nameEditBuf[12] = '\0';
+                strncpy(s_nameEditBuf, recipes[sysStatus.active_program_idx].name, 12);
+                for (int k = strlen(s_nameEditBuf); k < 12; k++) s_nameEditBuf[k] = ' ';
                 currentScreen = SCREEN_RECIPE_EDIT;
                 break;
             }
@@ -1508,7 +1520,8 @@ void drawProgramEditScreen(bool fullRedraw) {
         tft.setTextColor(TFT_WHITE, 0x0841);
         if (s_inValueEditMode) {
             tft.drawString("[UP/DN] Change", 10, 212);
-            tft.drawString("[<-/->] Save & Exit", 140, 212);
+            tft.drawString("[->] Save", 145, 212);
+            tft.drawString("[<-] Cancel", 230, 212);
         } else {
             tft.drawString("[UP/DN] Move", 10, 212);
             tft.drawString("[->] Edit", 130, 212);
