@@ -111,12 +111,21 @@ enum AppButtonMask_t {
 #define LIMIT_SWITCH_ACTIVE_LOW 1
 #endif
 
+// Enable Emergency Stop Bench Testing Features (serial bypass commands & virtual overrides)
+// Set to 1 for bench testing (allows serial bypass of unwired GPIO 35)
+// Set to 0 for physical hardware operation (hardware PIN 35 strictly monitored; serial bypass disabled)
+#ifndef ENABLE_ESTOP_BENCH_TESTING
+#define ENABLE_ESTOP_BENCH_TESTING 1
+#endif
+
 // Virtual limit switch and emergency stop simulator overrides (for bench
 // testing via Virtual TFT)
 extern bool g_simDownLimit;
 extern bool g_simHomeLimit;
+#if ENABLE_ESTOP_BENCH_TESTING
 extern bool g_simEmergencyStop;
 extern bool g_simEstopBypass;
+#endif
 
 // Per-device compile-time toggles (set to 0 to disable device and use
 // default/simulated values)

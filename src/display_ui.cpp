@@ -438,6 +438,7 @@ void handleButtonInputs() {
         if (c == '\r' || c == '\n') {
             if (s_serialCmdLen > 0) {
                 s_serialCmdBuf[s_serialCmdLen] = '\0';
+#if ENABLE_ESTOP_BENCH_TESTING
                 if (strcmp(s_serialCmdBuf, ":estop_bypass on") == 0 || 
                     strcmp(s_serialCmdBuf, ":estop_bypass 1") == 0 ||
                     strcmp(s_serialCmdBuf, ":estop_bypass") == 0 ||
@@ -461,6 +462,7 @@ void handleButtonInputs() {
                     g_simEmergencyStop = true;
                     sysStatus.emergency_stop_active = true;
                 }
+#endif
                 s_serialCmdLen = 0;
             }
             continue;
@@ -485,6 +487,7 @@ void handleButtonInputs() {
             case 'C':
                 btnLeftHold2s = true;  // Serial shortcut: Cancel Name
                 break;
+#if ENABLE_ESTOP_BENCH_TESTING
             case 'x':
             case 'X':
                 g_simEstopBypass = !g_simEstopBypass;
@@ -512,6 +515,7 @@ void handleButtonInputs() {
                 currentScreen = SCREEN_HOME;
                 transitionToState(STATE_IDLE);
                 break;
+#endif
             default: break;
         }
     }

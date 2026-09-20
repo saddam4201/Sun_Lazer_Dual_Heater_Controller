@@ -110,8 +110,10 @@ float g_h1_temp_manip_pct = 0.0f;
 float g_h2_temp_manip_pct = 0.0f;
 bool g_simDownLimit = false;
 bool g_simHomeLimit = false;
+#if ENABLE_ESTOP_BENCH_TESTING
 bool g_simEmergencyStop = false;
 bool g_simEstopBypass = false;
+#endif
 
 const char *getTorqueUnitName(TorqueUnit_t unit) {
     switch (unit) {

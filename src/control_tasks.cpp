@@ -91,14 +91,12 @@ void Task_SafetyAndControl(void *pvParameters) {
             sysStatus.home_limit_active = false;
         }
 
-        // Dedicated hardware Emergency Stop check (GPIO 35, active LOW) + Virtual Simulator override
-#ifndef SIMULATED_HARDWARE
+        // Dedicated hardware Emergency Stop check (GPIO 35, active LOW)
         int raw_estop_pin = digitalRead(PIN_EMERGENCY_STOP);
-#else
-        int raw_estop_pin = HIGH;
-#endif
         static bool s_last_estop_pin_active = false;
         bool raw_estop_active = false;
+
+#if ENABLE_ESTOP_BENCH_TESTING
         if (!g_simEstopBypass) {
             raw_estop_active = (raw_estop_pin == LOW) || g_simEmergencyStop;
         } else {
@@ -108,6 +106,13 @@ void Task_SafetyAndControl(void *pvParameters) {
                 sysStatus.emergency_stop_active = false;
             }
         }
+#else
+        // Physical Hardware Operation: strictly read hardware pin (GPIO 35, active LOW)
+        raw_estop_active = (raw_estop_pin == LOW);
+        if (!raw_estop_active && sysStatus.emergency_stop_active) {
+            sysStatus.emergency_stop_active = false;
+        }
+#endif
 
         // Edge-triggered hardware press or explicit software activation
         if (raw_estop_active && !s_last_estop_pin_active) {
