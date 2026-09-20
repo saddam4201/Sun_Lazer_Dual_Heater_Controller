@@ -97,7 +97,12 @@ void Task_SafetyAndControl(void *pvParameters) {
         int raw_estop_pin = HIGH;
 #endif
         static bool s_last_estop_pin_active = false;
-        bool raw_estop_active = (raw_estop_pin == LOW) || g_simEmergencyStop;
+        bool raw_estop_active = false;
+        if (!g_simEstopBypass) {
+            raw_estop_active = (raw_estop_pin == LOW) || g_simEmergencyStop;
+        } else {
+            raw_estop_active = g_simEmergencyStop;
+        }
 
         // Edge-triggered hardware press or explicit software activation
         if ((raw_estop_active && !s_last_estop_pin_active) || sysStatus.emergency_stop_active) {

@@ -11,7 +11,8 @@
 #define FIRMWARE_VERSION "v3.3"
 #endif
 
-// Enable WiFi & WebServer support (set to 0 for bench testing to save ~500 KB flash)
+// Enable WiFi & WebServer support (set to 0 for bench testing to save ~500 KB
+// flash)
 #ifndef ENABLE_WIFI_WEBSERVER
 #define ENABLE_WIFI_WEBSERVER 0
 #endif
@@ -19,7 +20,6 @@
 #if ENABLE_WIFI_WEBSERVER
 #include <WebServer.h>
 #endif
-
 
 // VSPI Pins
 #define PIN_VSPI_SCK 18
@@ -42,7 +42,8 @@
 #define ENABLE_RTC 0
 #endif
 
-// Enable Virtual TFT display over UART Serial (for bench testing with PC application)
+// Enable Virtual TFT display over UART Serial (for bench testing with PC
+// application)
 #ifndef ENABLE_UART_VIRTUAL_TFT
 #define ENABLE_UART_VIRTUAL_TFT 1
 #endif
@@ -50,7 +51,8 @@
 #define ENABLE_VIRTUAL_UART_TFT ENABLE_UART_VIRTUAL_TFT
 #endif
 
-// Enable Physical SPI ILI9341 TFT display (set to 0 for bench testing with only ESP)
+// Enable Physical SPI ILI9341 TFT display (set to 0 for bench testing with only
+// ESP)
 #ifndef ENABLE_PHYSICAL_TFT
 #define ENABLE_PHYSICAL_TFT 1
 #endif
@@ -109,10 +111,12 @@ enum AppButtonMask_t {
 #define LIMIT_SWITCH_ACTIVE_LOW 1
 #endif
 
-// Virtual limit switch and emergency stop simulator overrides (for bench testing via Virtual TFT)
+// Virtual limit switch and emergency stop simulator overrides (for bench
+// testing via Virtual TFT)
 extern bool g_simDownLimit;
 extern bool g_simHomeLimit;
 extern bool g_simEmergencyStop;
+extern bool g_simEstopBypass;
 
 // Per-device compile-time toggles (set to 0 to disable device and use
 // default/simulated values)
@@ -137,15 +141,17 @@ extern bool g_simEmergencyStop;
 
 // Sensor CS Pins
 #define PIN_MAX31865_CS1 14
-#define PIN_MAX31865_CS2 15
+#define PIN_MAX31865_CS2 14
 
 // Torque Sensor Pins (TQ10 via HX711)
 #define PIN_HX711_DOUT 36
 #define PIN_HX711_SCK 12
 
-// Limit Switches & Emergency Stop - Active LOW (External 10k pull-ups required on GPIO 34/35)
+// Limit Switches & Emergency Stop - Active LOW (External 10k pull-ups required
+// on GPIO 34/35)
 #define PIN_DOWN_LIMIT 34
-#define PIN_EMERGENCY_STOP 35 // Dedicated hardware Emergency Stop button (active LOW)
+#define PIN_EMERGENCY_STOP                                                     \
+  35 // Dedicated hardware Emergency Stop button (active LOW)
 #define PIN_HOME_LIMIT PIN_EMERGENCY_STOP // Compatibility alias
 
 // Push Buttons
@@ -158,9 +164,10 @@ extern bool g_simEmergencyStop;
 // SSR, Pneumatic Actuator & Torque Motor Outputs
 #define PIN_SSR_1 16
 #define PIN_SSR_2 17
-#define PIN_PNEUMATIC 21       // Solenoid valve output for pneumatic cylinder
+#define PIN_PNEUMATIC 21 // Solenoid valve output for pneumatic cylinder
 #define PIN_MOTOR_DOWN PIN_PNEUMATIC // Compatibility alias
-#define PIN_TORQUE_MOTOR 22    // Torque motor relay/driver output (runs during process timer)
+#define PIN_TORQUE_MOTOR                                                       \
+  22 // Torque motor relay/driver output (runs during process timer)
 #define PIN_MOTOR_UP PIN_TORQUE_MOTOR // Compatibility alias
 
 // PT100 Constants & Wire Mode
@@ -187,11 +194,13 @@ extern bool g_simEmergencyStop;
 
 // Pneumatic Cylinder Timeouts & Delays
 #ifndef PNEUMATIC_DOWN_TIMEOUT_SEC
-#define PNEUMATIC_DOWN_TIMEOUT_SEC 15 // Timeout for pneumatic cylinder to reach down limit switch
+#define PNEUMATIC_DOWN_TIMEOUT_SEC                                             \
+  15 // Timeout for pneumatic cylinder to reach down limit switch
 #endif
 
 #ifndef PNEUMATIC_RETRACT_DELAY_MS
-#define PNEUMATIC_RETRACT_DELAY_MS 1000 // Retraction settling time before saving record
+#define PNEUMATIC_RETRACT_DELAY_MS                                             \
+  1000 // Retraction settling time before saving record
 #endif
 
 // 100-Base Process Timer Conversion: 100 units = 1 min (60 seconds)
@@ -230,17 +239,17 @@ typedef enum {
 
 // Recipe Format for 10 Programs
 struct ProgramRecipe_t {
-  uint16_t magic;           // validation magic (0xABCD)
-  uint8_t version;          // storage struct version (3)
-  char name[16];            // e.g. "Program 01"
-  float h1_setpoint_c;      // -40.0 to +300.0 C (step 0.5 C)
-  float h2_setpoint_c;      // -40.0 to +300.0 C (step 0.5 C)
+  uint16_t magic;            // validation magic (0xABCD)
+  uint8_t version;           // storage struct version (3)
+  char name[16];             // e.g. "Program 01"
+  float h1_setpoint_c;       // -40.0 to +300.0 C (step 0.5 C)
+  float h2_setpoint_c;       // -40.0 to +300.0 C (step 0.5 C)
   uint32_t process_time_sec; // 0 to 9999 s
-  float temp_tolerance_c;   // -10.0 to +10.0 C (step 0.5 C)
-  float h1_temp_offset_pct; // -20.0% to +20.0% (step 0.5%)
-  float h2_temp_offset_pct; // -20.0% to +20.0% (step 0.5%)
-  uint8_t torque_unit;      // TorqueUnit_t (0: Nm, 1: kg.cm, 2: lb.in)
-  uint8_t reserved[3];      // alignment padding
+  float temp_tolerance_c;    // -10.0 to +10.0 C (step 0.5 C)
+  float h1_temp_offset_pct;  // -20.0% to +20.0% (step 0.5%)
+  float h2_temp_offset_pct;  // -20.0% to +20.0% (step 0.5%)
+  uint8_t torque_unit;       // TorqueUnit_t (0: Nm, 1: kg.cm, 2: lb.in)
+  uint8_t reserved[3];       // alignment padding
 
   // Per-program PID tunings
   float h1_Kp;
@@ -275,7 +284,8 @@ struct SystemStatus_t {
   // Force-start confirmation state (when Auto blocks start)
   bool forceStartPending;
   uint32_t forceStartUntilMs;
-  bool forceStartActive; // true when process was started via Force-Start (bypasses temp wait)
+  bool forceStartActive; // true when process was started via Force-Start
+                         // (bypasses temp wait)
 
   // Start mode (auto/manual)
   bool start_mode_auto;
@@ -308,15 +318,15 @@ enum TorqueUnit_t {
 };
 
 // Setpoint Temperature Range Limits (-40 deg C to +300 deg C)
-#define MIN_SETPOINT_TEMP_C   -40.0f
-#define MAX_SETPOINT_TEMP_C   300.0f
+#define MIN_SETPOINT_TEMP_C -40.0f
+#define MAX_SETPOINT_TEMP_C 300.0f
 
 // Safety Torque Overload Threshold (Nm)
 #define MAX_TORQUE_OVERLOAD_NM 5.0f
 
 // Temperature Tolerance Limits (strictly positive)
-#define MIN_TEMP_TOLERANCE_C   0.5f
-#define MAX_TEMP_TOLERANCE_C   15.0f
+#define MIN_TEMP_TOLERANCE_C 0.5f
+#define MAX_TEMP_TOLERANCE_C 15.0f
 
 // Compile-time macro to enable/disable temperature percentage manipulation
 #ifndef ENABLE_TEMP_MANIPULATION
@@ -341,7 +351,8 @@ extern WebServer webServer;
 extern SemaphoreHandle_t xSemaphoreSPI;
 extern QueueHandle_t xLogQueue;
 
-// Bench temperature simulation toggle (false by default: reads real MAX31865 sensor)
+// Bench temperature simulation toggle (false by default: reads real MAX31865
+// sensor)
 extern bool g_benchTempSimEnabled;
 
 // Active settings

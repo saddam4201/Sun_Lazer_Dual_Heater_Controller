@@ -285,6 +285,13 @@ class VirtualTFTApp(tk.Tk):
                                       command=self.toggle_temp_sim)
         self.btn_temp_sim.pack(side=tk.LEFT, padx=(0, 4))
 
+        # E-Stop Bypass Toggle (Default OFF: Hardware Pin active)
+        self.estop_bypass_active = False
+        self.btn_estop_bypass = tk.Button(bench_bar, text="E-Stop: HW PIN", font=(self.font_family, 8, "bold"),
+                                          fg="#FFFFFF", bg="#4B5563", activebackground="#6B7280", bd=0, padx=8, pady=2,
+                                          command=self.toggle_estop_bypass)
+        self.btn_estop_bypass.pack(side=tk.LEFT, padx=(0, 4))
+
         # Main Workspace
         main_paned = tk.PanedWindow(self, orient=tk.HORIZONTAL, bg="#1E1E24", bd=0, sashwidth=4)
         main_paned.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=8, pady=8)
@@ -648,6 +655,17 @@ class VirtualTFTApp(tk.Tk):
             self.send_serial_line(":sim_temp off")
             self.log_packet("[BENCH] Disabled Bench Temperature Simulation (reading real sensor)")
 
+    def toggle_estop_bypass(self):
+        self.estop_bypass_active = not self.estop_bypass_active
+        if self.estop_bypass_active:
+            self.btn_estop_bypass.configure(text="E-Stop: BYPASS", bg="#008037")
+            self.send_serial_line(":estop_bypass on")
+            self.log_packet("[BENCH] E-Stop HW Pin Bypassed for Bench Testing")
+        else:
+            self.btn_estop_bypass.configure(text="E-Stop: HW PIN", bg="#4B5563")
+            self.send_serial_line(":estop_bypass off")
+            self.log_packet("[BENCH] E-Stop Hardware Pin Active (Pin 35 Monitored)")
+
     def prompt_set_temps(self):
         val = simpledialog.askstring("Set Temperatures", "Enter target or actual temp in °C:\n(e.g. 'h1 120' or 'h2 120')")
         if val:
@@ -685,6 +703,8 @@ class VirtualTFTApp(tk.Tk):
             self.send_serial_char(event.char)
         elif event.char in ('e', 'E'):
             self.send_nav_estop()
+        elif event.char in ('x', 'X'):
+            self.toggle_estop_bypass()
 
     # --------------------------------------------------------------------------
     # COMMAND QUEUE & PARSER DISPATCHER

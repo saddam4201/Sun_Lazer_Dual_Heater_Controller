@@ -120,49 +120,39 @@ static void getCurrentTimeString(char *timeBuf, size_t timeBufLen) {
     }
 }
 
+static void getCurrentTimeHHMMString(char *timeBuf, size_t timeBufLen) {
+    uint16_t y = 2026;
+    uint8_t mo = 1, d = 1, hh = 0, mm = 0, ss = 0;
+    if (getRTCTimeComponents(&y, &mo, &d, &hh, &mm, &ss)) {
+        snprintf(timeBuf, timeBufLen, "%02u:%02u", hh, mm);
+    } else {
+        if (s_bootTimeSec == 0) initBootTime();
+        uint32_t curSec = (s_bootTimeSec + (millis() / 1000)) % 86400;
+        uint32_t m = (curSec / 60) % 60;
+        uint32_t h = (curSec / 3600) % 24;
+        snprintf(timeBuf, timeBufLen, "%02u:%02u", (unsigned)h, (unsigned)m);
+    }
+}
+
 void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELLOW) {
-    // Setting Mode & Sub-screens Header: Full 40px height with Status Bar (y = 0..40, h = 40)
+    // Setting Mode & Sub-screens Header: Full 40px height (y = 0..40, h = 40)
     tft.fillRect(0, 0, 320, 40, 0x0841); // Dark charcoal
     tft.drawFastHLine(0, 40, 320, TFT_DARKCYAN);
 
-    // Status Bar Row (y = 0..16)
+    // Status Bar: Time in HH:MM centered in middle (y = 2..18)
     char timeStr[16];
-    getCurrentTimeString(timeStr, sizeof(timeStr));
+    getCurrentTimeHHMMString(timeStr, sizeof(timeStr));
     tft.setFreeFont(FONT_FREE_BOLD_9);
     tft.setTextColor(TFT_WHITE, 0x0841);
-    tft.drawString(timeStr, 10, 2);
+    int16_t tW = tft.textWidth(timeStr);
+    tft.drawString(timeStr, (320 - tW) / 2, 2);
 
-    // Status Badges on Top-Right: [AUTO/MAN] [SD] [WiFi]
-    int badgeX = 310;
-    const char *modeStr = sysStatus.start_mode_auto ? "AUTO" : "MAN";
-    uint16_t modeCol = sysStatus.start_mode_auto ? TFT_GREEN : TFT_YELLOW;
-    badgeX -= (strlen(modeStr) * 9 + 6);
-    tft.setTextColor(modeCol, 0x0841);
-    tft.drawString(modeStr, badgeX, 2);
-
-    badgeX -= 32;
-    tft.setTextColor(sysStatus.sd_present ? TFT_GREEN : 0x52AA, 0x0841);
-    tft.drawString("SD", badgeX, 2);
-
-    badgeX -= 44;
-#if ENABLE_WIFI_WEBSERVER
-    tft.setTextColor(TFT_CYAN, 0x0841);
-#else
-    tft.setTextColor(0x52AA, 0x0841); // Dimmed
-#endif
-    tft.drawString("WiFi", badgeX, 2);
-
-    // App Bar Row (y = 16..39)
-    tft.setFreeFont(FONT_FREE_BOLD_12);
-    tft.setTextColor(TFT_CYAN, 0x0841);
-    tft.drawString("Sun Smart", 10, 20);
-
-    // Right Context Badge
+    // Sub-screen Title centered below Time (y = 20..38)
     if (rightBadgeText && rightBadgeText[0]) {
+        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(badgeColor, 0x0841);
-        tft.setTextPadding(140);
-        tft.drawString(rightBadgeText, 170, 20);
-        tft.setTextPadding(0);
+        int16_t bW = tft.textWidth(rightBadgeText);
+        tft.drawString(rightBadgeText, (320 - bW) / 2, 22);
     }
     tft.setFreeFont(FONT_FREE_BOLD_9);
 }
@@ -440,9 +430,36 @@ void handleButtonInputs() {
 
 #if INPUT_USE_SERIAL
     // Serial-mode keys (bench testing / virtual display):
+    static char s_serialCmdBuf[32];
+    static uint8_t s_serialCmdLen = 0;
     while (Serial && Serial.available()) {
         char c = Serial.read();
-        if (c == '\r' || c == '\n') continue;
+        if (c == '\r' || c == '\n') {
+            if (s_serialCmdLen > 0) {
+                s_serialCmdBuf[s_serialCmdLen] = '\0';
+                if (strcmp(s_serialCmdBuf, ":estop_bypass on") == 0 || strcmp(s_serialCmdBuf, ":estop off") == 0) {
+                    g_simEstopBypass = true;
+                    sysStatus.emergency_stop_active = false;
+                    g_simEmergencyStop = false;
+                    if (sysStatus.currentState == STATE_ALARM_FAULT) {
+                        transitionToState(STATE_READY);
+                    }
+                } else if (strcmp(s_serialCmdBuf, ":estop_bypass off") == 0) {
+                    g_simEstopBypass = false;
+                } else if (strcmp(s_serialCmdBuf, ":estop on") == 0) {
+                    g_simEmergencyStop = true;
+                    sysStatus.emergency_stop_active = true;
+                }
+                s_serialCmdLen = 0;
+            }
+            continue;
+        }
+        if (c == ':' || s_serialCmdLen > 0) {
+            if (s_serialCmdLen < sizeof(s_serialCmdBuf) - 1) {
+                s_serialCmdBuf[s_serialCmdLen++] = c;
+            }
+            continue;
+        }
         switch (c) {
             case '1': btnUp = true; break;
             case '2': btnDown = true; break;
@@ -456,6 +473,17 @@ void handleButtonInputs() {
             case 'c':
             case 'C':
                 btnLeftHold2s = true;  // Serial shortcut: Cancel Name
+                break;
+            case 'x':
+            case 'X':
+                g_simEstopBypass = !g_simEstopBypass;
+                if (g_simEstopBypass) {
+                    sysStatus.emergency_stop_active = false;
+                    g_simEmergencyStop = false;
+                    if (sysStatus.currentState == STATE_ALARM_FAULT) {
+                        transitionToState(STATE_READY);
+                    }
+                }
                 break;
             case 'e':
             case 'E':
@@ -483,20 +511,16 @@ void handleButtonInputs() {
         return; // All buttons disabled; user must restart the system
     }
 
-    // Mutual Button Isolation: Button 5 (Start/Stop) only operates on Home screen
-    if (currentScreen != SCREEN_HOME) {
-        // In settings: Start/Stop button is completely disabled so it never interferes with navigation/settings
+    // Mutual Button Isolation: Button 5 (Start/Stop) only operates on Home screen and Recipe Name Edit screen
+    if (currentScreen != SCREEN_HOME && currentScreen != SCREEN_NAME_EDIT) {
+        // In other screens: Start/Stop button is disabled so it never interferes with navigation/settings
         btnOk = false;
     }
 
     if (!btnUp && !btnDown && !btnLeft && !btnRight && !btnOk && !btnRightHold2s && !btnLeftHold2s) return;
 
-    // Button 5 (btnOk): Exclusively START / STOP machine cycle operation
-    if (btnOk) {
-        if (currentScreen != SCREEN_HOME) {
-            // In settings: start/stop button will NOT work until we came out the settings
-            return;
-        }
+    // Button 5 (btnOk): START / STOP machine cycle operation on Home screen
+    if (btnOk && currentScreen == SCREEN_HOME) {
 
         if (sysStatus.forceStartPending) {
             sysStatus.forceStartPending = false;
@@ -820,8 +844,8 @@ void handleButtonInputs() {
             static const char s_charset[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
             static const size_t s_charsetLen = sizeof(s_charset) - 1;
 
-            // 1. Hold Right 2 sec: SAVE immediately without moving to save option
-            if (btnRightHold2s) {
+            // 1. Button START/STOP (btnOk): SAVE immediately and return
+            if (btnOk) {
                 int lastNonSpace = 11;
                 while (lastNonSpace >= 0 && s_nameEditBuf[lastNonSpace] == ' ') lastNonSpace--;
                 if (lastNonSpace < 0) {
@@ -844,14 +868,6 @@ void handleButtonInputs() {
                 strncpy(s_nameEditBuf, recipes[sysStatus.active_program_idx].name, 12);
                 for (int k = strlen(s_nameEditBuf); k < 12; k++) s_nameEditBuf[k] = ' ';
                 currentScreen = SCREEN_RECIPE_EDIT;
-                break;
-            }
-
-            // 3. Button OK: Clear all characters
-            if (btnOk) {
-                memset(s_nameEditBuf, ' ', 12);
-                s_nameEditBuf[12] = '\0';
-                s_nameSlotIdx = 0;
                 break;
             }
 
@@ -1030,9 +1046,15 @@ void drawHomeScreen(bool fullRedraw) {
     static bool last_boot_ok = true;
     static bool last_start_mode = false;
     static int last_prog_idx = -1;
+    static char last_time_str[8] = {0};
+
+    char cur_time_str[8];
+    getCurrentTimeHHMMString(cur_time_str, sizeof(cur_time_str));
+    bool time_changed = (strcmp(cur_time_str, last_time_str) != 0);
 
     bool state_changed = (sysStatus.currentState != last_state || sysStatus.boot_ok != last_boot_ok || 
-                          sysStatus.start_mode_auto != last_start_mode || sysStatus.active_program_idx != last_prog_idx);
+                          sysStatus.start_mode_auto != last_start_mode || sysStatus.active_program_idx != last_prog_idx ||
+                          time_changed);
 
     if (fullRedraw || state_changed) {
         uint16_t statusBorder = TFT_DARKCYAN;
@@ -1118,28 +1140,14 @@ void drawHomeScreen(bool fullRedraw) {
         // 1. Left: SUN SMART
         tft.setTextColor(TFT_CYAN, TFT_BLACK);
         tft.drawString("SUN SMART", 12, 4);
-        int16_t brandW = tft.textWidth("SUN SMART", 2);
-        int16_t div1X = 12 + brandW + 6;
 
-        // Divider 1
-        tft.setTextColor(TFT_DARKCYAN, TFT_BLACK);
-        tft.drawString("|", div1X, 4);
-
-        // 2. Middle: Active Program Name
-        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-        char pgmBuf[24];
-        snprintf(pgmBuf, sizeof(pgmBuf), "%s", recipes[sysStatus.active_program_idx].name);
-        tft.drawString(pgmBuf, div1X + 8, 4);
-        int16_t nameW = tft.textWidth(pgmBuf, 2);
-        int16_t div2X = div1X + 8 + nameW + 6;
-
-        // Divider 2
-        tft.setTextColor(TFT_DARKCYAN, TFT_BLACK);
-        tft.drawString("|", div2X, 4);
+        // 2. Middle: Clock HH:MM
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawCentreString(cur_time_str, 160, 4);
 
         // 3. Right: Status
         tft.setTextColor(statusTextColor, TFT_BLACK);
-        tft.drawString(statusLine, div2X + 8, 4);
+        tft.drawRightString(statusLine, 306, 4);
 
         tft.setFreeFont(FONT_FREE_BOLD_9);
 
@@ -1147,6 +1155,7 @@ void drawHomeScreen(bool fullRedraw) {
         last_boot_ok = sysStatus.boot_ok;
         last_start_mode = sysStatus.start_mode_auto;
         last_prog_idx = sysStatus.active_program_idx;
+        strncpy(last_time_str, cur_time_str, sizeof(last_time_str));
     }
 
     // 3. Card 1: Heater 1 (y = 26..110, h = 84)
@@ -1240,22 +1249,44 @@ void drawHomeScreen(bool fullRedraw) {
 
     // 6. Card 4: Process Timer (y = 116..200, h = 84)
     static uint32_t last_remaining = 0xFFFFFFFF;
-    if (fullRedraw || sysStatus.remaining_time_sec != last_remaining) {
+    static int last_card4_prog = -1;
+    bool timer_needs_update = fullRedraw || 
+                              (sysStatus.remaining_time_sec != last_remaining) || 
+                              (sysStatus.active_program_idx != last_card4_prog);
+    if (timer_needs_update) {
         tft.fillRect(168, 142, 140, 36, TFT_BLACK);
-        tft.setFreeFont(FONT_FREE_BOLD_18);
         if (sysStatus.remaining_time_sec > 0) {
             uint32_t t = sysStatus.remaining_time_sec;
             uint32_t mm = t / 60;
             uint32_t ss = t % 60;
-            char tb[16];
-            snprintf(tb, sizeof(tb), "%02u:%02u", (unsigned)mm, (unsigned)ss);
+            uint32_t remUnits = (t * 100 + 59) / 60; // 100 units = 60s
+            char numBuf[16], unitBuf[16];
+            snprintf(numBuf, sizeof(numBuf), "%u", (unsigned)remUnits);
+            snprintf(unitBuf, sizeof(unitBuf), "(%02u:%02u)", (unsigned)mm, (unsigned)ss);
+
+            tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_GREEN, TFT_BLACK);
-            tft.drawString(tb, 172, 148);
+            tft.drawString(numBuf, 172, 148);
+            tft.setFreeFont(FONT_FREE_BOLD_9);
+            tft.drawString(unitBuf, 235, 150);
         } else {
+            uint32_t pUnits = recipes[sysStatus.active_program_idx].process_time_sec;
+            uint32_t tSec = TIMER_UNITS_TO_SECONDS(pUnits);
+            uint32_t mm = tSec / 60;
+            uint32_t ss = tSec % 60;
+            char numBuf[16], unitBuf[16];
+            snprintf(numBuf, sizeof(numBuf), "%u", (unsigned)pUnits);
+            snprintf(unitBuf, sizeof(unitBuf), "(%02u:%02u)", (unsigned)mm, (unsigned)ss);
+
+            tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.drawString("--:--", 172, 148);
+            tft.drawString(numBuf, 172, 148);
+            tft.setFreeFont(FONT_FREE_BOLD_9);
+            tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+            tft.drawString(unitBuf, 235, 150);
         }
         last_remaining = sysStatus.remaining_time_sec;
+        last_card4_prog = sysStatus.active_program_idx;
     }
 
     // 8. Footer Navigation Bar Dynamic Update (Running vs Idle) using compact Font 2
@@ -1550,14 +1581,14 @@ void drawProgramEditScreen(bool fullRedraw) {
     }
 
     const char* paramLabels[8] = {
-        "NAME:",
-        "H1 TARGET TEMP:",
-        "H2 TARGET TEMP:",
-        "PROCESS TIME:",
-        "TEMP TOLERANCE:",
-        "H1 OFFSET %:",
-        "H2 OFFSET %:",
-        "TORQUE UNIT:"
+        "Name",
+        "H1 Setpoint",
+        "H2 Setpoint",
+        "Process Time",
+        "Tolerance",
+        "H1 Offset",
+        "H2 Offset",
+        "Torque Unit"
     };
 
     char valBuffers[8][24];
@@ -1584,27 +1615,22 @@ void drawProgramEditScreen(bool fullRedraw) {
 
         uint16_t borderCol = isSel ? (s_inValueEditMode ? TFT_YELLOW : TFT_GREEN) : 0x4A69;
         uint16_t bgCol     = isSel ? (s_inValueEditMode ? 0x2100 : 0x10C2) : TFT_BLACK;
-        uint16_t labelCol  = isSel ? (s_inValueEditMode ? TFT_YELLOW : TFT_GREEN) : TFT_CYAN;
-        uint16_t valCol    = isSel ? TFT_WHITE : TFT_LIGHTGREY;
+        uint16_t labelCol  = isSel ? (s_inValueEditMode ? TFT_YELLOW : TFT_GREEN) : TFT_LIGHTGREY;
+        uint16_t valCol    = isSel ? (s_inValueEditMode ? TFT_YELLOW : TFT_WHITE) : TFT_WHITE;
 
-        tft.drawRoundRect(6, curY, 308, cardH, 4, borderCol);
-        tft.fillRect(7, curY + 1, 306, cardH - 2, bgCol);
+        // Card frame matching settings menu exactly
+        tft.drawRoundRect(10, curY, 300, cardH, 4, borderCol);
+        tft.fillRect(11, curY + 1, 298, cardH - 2, bgCol);
 
         tft.setTextColor(labelCol, bgCol);
-        tft.drawString(paramLabels[itemIdx], 14, curY + 9);
+        if (isSel) {
+            tft.drawString(">", 16, curY + 9);
+        }
+        tft.drawString(paramLabels[itemIdx], 28, curY + 9);
+        tft.drawString(":", 160, curY + 9);
 
         tft.setTextColor(valCol, bgCol);
-        tft.drawString(valBuffers[itemIdx], 165, curY + 9);
-
-        if (isSel) {
-            if (s_inValueEditMode) {
-                tft.setTextColor(TFT_YELLOW, bgCol);
-                tft.drawString("[EDIT]", 255, curY + 9);
-            } else {
-                tft.setTextColor(TFT_GREEN, bgCol);
-                tft.drawString(">", 295, curY + 9);
-            }
-        }
+        tft.drawString(valBuffers[itemIdx], 175, curY + 9);
     }
 
     last_prog = sysStatus.active_program_idx;
@@ -1729,16 +1755,17 @@ void drawProgramNameEditScreen(bool fullRedraw) {
         // Instruction
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawString("Set custom name (max 12 chars):", 14, 45);
+        tft.drawString("Set custom name (max 12 chars):", 14, 52);
 
         // Footer Navigation Bar (y = 204..240)
         tft.fillRect(0, 204, 320, 32, 0x0841);
         tft.drawFastHLine(0, 204, 320, TFT_DARKCYAN);
         tft.setTextFont(2);
         tft.setTextColor(TFT_WHITE, 0x0841);
-        tft.drawString("[UP/DN] Char", 10, 213);
-        tft.drawString("Hold [->] 2s: Save", 115, 213);
-        tft.drawString("Hold [<-] 2s: Cancel", 215, 213);
+        tft.drawString("[UP/DN] Char", 8, 213);
+        tft.drawString("[<-/->] Slot", 88, 213);
+        tft.drawString("[START] Save", 168, 213);
+        tft.drawString("Hold [<-] Cancel", 244, 213);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.fillRect(0, 236, 320, 4, TFT_DARKGREEN);
     }
@@ -1748,11 +1775,11 @@ void drawProgramNameEditScreen(bool fullRedraw) {
     const int slotW = 22;
     const int slotH = 36;
     const int gap = 3;
-    const int slotY = 80;
+    const int slotY = 108;
 
     // Clear arrow area
-    tft.fillRect(startX, slotY - 16, 297, 14, TFT_BLACK);
-    tft.fillRect(startX, slotY + slotH + 2, 297, 14, TFT_BLACK);
+    tft.fillRect(startX, slotY - 18, 297, 16, TFT_BLACK);
+    tft.fillRect(startX, slotY + slotH + 2, 297, 16, TFT_BLACK);
 
     for (int i = 0; i < 12; i++) {
         bool isSlot = (s_nameSlotIdx == i);
@@ -1779,19 +1806,7 @@ void drawProgramNameEditScreen(bool fullRedraw) {
         tft.drawString(cStr, curX + 6, slotY + 9);
     }
 
-    // Action Cards: [HOLD -> 2s: SAVE], [HOLD <- 2s: CANCEL] (y=155..187)
-    // Save Card (x=14, w=140, h=32)
-    tft.drawRoundRect(14, 155, 140, 32, 4, TFT_GREEN);
-    tft.fillRect(15, 156, 138, 30, 0x10C2);
-    tft.setFreeFont(FONT_FREE_BOLD_9);
-    tft.setTextColor(TFT_GREEN, 0x10C2);
-    tft.drawString("HOLD [->] 2s: SAVE", 18, 162);
-
-    // Cancel Card (x=166, w=140, h=32)
-    tft.drawRoundRect(166, 155, 140, 32, 4, TFT_RED);
-    tft.fillRect(167, 156, 138, 30, 0x3000);
-    tft.setTextColor(TFT_RED, 0x3000);
-    tft.drawString("HOLD [<-] 2s: CANCEL", 170, 162);
+    // Note: Middle action cards removed per user request; Save is via [START], Cancel is via Hold [<-] 2s
 
     strncpy(last_buf, s_nameEditBuf, sizeof(last_buf) - 1);
     last_slot = s_nameSlotIdx;
