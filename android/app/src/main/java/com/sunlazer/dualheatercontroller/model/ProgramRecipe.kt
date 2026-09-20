@@ -7,7 +7,7 @@ data class ProgramRecipe(
     @SerializedName("name") var name: String = "P01",
     @SerializedName("h1_setpoint") var h1Setpoint: Float = 100.0f,
     @SerializedName("h2_setpoint") var h2Setpoint: Float = 100.0f,
-    @SerializedName("process_time_sec") var processTimeSec: Long = 60L,
+    @SerializedName("process_time_sec") var processTimeSec: Long = 50L,
     @SerializedName("torque_limit") var torqueLimit: Float = 5.0f,
     @SerializedName("temp_tolerance") var tempTolerance: Float = 2.0f,
     @SerializedName("h1_Kp") var h1Kp: Float = 2.0f,
