@@ -103,10 +103,14 @@ void Task_SafetyAndControl(void *pvParameters) {
             raw_estop_active = (raw_estop_pin == LOW) || g_simEmergencyStop;
         } else {
             raw_estop_active = g_simEmergencyStop;
+            if (!g_simEmergencyStop && sysStatus.emergency_stop_active) {
+                // When E-Stop is bypassed, clear the emergency alert immediately
+                sysStatus.emergency_stop_active = false;
+            }
         }
 
         // Edge-triggered hardware press or explicit software activation
-        if ((raw_estop_active && !s_last_estop_pin_active) || sysStatus.emergency_stop_active) {
+        if (raw_estop_active && !s_last_estop_pin_active) {
             sysStatus.emergency_stop_active = true;
             safeDigitalWrite(PIN_SSR_1, LOW);
             safeDigitalWrite(PIN_SSR_2, LOW);

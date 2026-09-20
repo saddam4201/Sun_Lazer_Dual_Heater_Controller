@@ -285,10 +285,10 @@ class VirtualTFTApp(tk.Tk):
                                       command=self.toggle_temp_sim)
         self.btn_temp_sim.pack(side=tk.LEFT, padx=(0, 4))
 
-        # E-Stop Bypass Toggle (Default OFF: Hardware Pin active)
-        self.estop_bypass_active = False
-        self.btn_estop_bypass = tk.Button(bench_bar, text="E-Stop: HW PIN", font=(self.font_family, 8, "bold"),
-                                          fg="#FFFFFF", bg="#4B5563", activebackground="#6B7280", bd=0, padx=8, pady=2,
+        # E-Stop Bypass Toggle (Default ON for bench testing: bypasses unwired GPIO 35)
+        self.estop_bypass_active = True
+        self.btn_estop_bypass = tk.Button(bench_bar, text="E-Stop: BYPASS", font=(self.font_family, 8, "bold"),
+                                          fg="#FFFFFF", bg="#008037", activebackground="#059669", bd=0, padx=8, pady=2,
                                           command=self.toggle_estop_bypass)
         self.btn_estop_bypass.pack(side=tk.LEFT, padx=(0, 4))
 
@@ -545,6 +545,12 @@ class VirtualTFTApp(tk.Tk):
 
             self.serial_thread = threading.Thread(target=self.serial_reader_worker, daemon=True)
             self.serial_thread.start()
+
+            # If E-Stop is set to bypassed, immediately send command to ESP32 to skip emergency alert
+            if self.estop_bypass_active:
+                time.sleep(0.05)
+                self.send_serial_line(":estop_bypass on")
+                self.send_serial_line(":estop off")
         except Exception as e:
             self.is_connected = False
             if not silent:
@@ -572,6 +578,11 @@ class VirtualTFTApp(tk.Tk):
                         line = line.strip()
                         if line:
                             self.cmd_queue.put(line)
+                            # If ESP32 reboots or sends ready banner while E-Stop is bypassed, immediately re-send bypass command
+                            if "Ready" in line or "Welcome" in line or "[VIRT_TFT]" in line:
+                                if self.estop_bypass_active:
+                                    self.send_serial_line(":estop_bypass on")
+                                    self.send_serial_line(":estop off")
             except Exception:
                 break
             time.sleep(0.001)
@@ -660,11 +671,12 @@ class VirtualTFTApp(tk.Tk):
         if self.estop_bypass_active:
             self.btn_estop_bypass.configure(text="E-Stop: BYPASS", bg="#008037")
             self.send_serial_line(":estop_bypass on")
-            self.log_packet("[BENCH] E-Stop HW Pin Bypassed for Bench Testing")
+            self.send_serial_line(":estop off")
+            self.log_packet("[BENCH] E-Stop Bypassed: Sent command to ESP32 to skip emergency alert", "TX")
         else:
             self.btn_estop_bypass.configure(text="E-Stop: HW PIN", bg="#4B5563")
             self.send_serial_line(":estop_bypass off")
-            self.log_packet("[BENCH] E-Stop Hardware Pin Active (Pin 35 Monitored)")
+            self.log_packet("[BENCH] E-Stop Hardware Pin Active (Pin 35 Monitored)", "TX")
 
     def prompt_set_temps(self):
         val = simpledialog.askstring("Set Temperatures", "Enter target or actual temp in °C:\n(e.g. 'h1 120' or 'h2 120')")
