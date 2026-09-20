@@ -62,6 +62,17 @@
 #define ENABLE_SERIAL_TFT 0
 #endif
 
+// Enable Rising Sun Startup Animation (cinematic brand intro on boot)
+// Set to 1 to enable, 0 to disable
+#ifndef ENABLE_RISING_SUN_ANIMATION
+#define ENABLE_RISING_SUN_ANIMATION 1
+#endif
+
+// Rising Sun Startup Animation Duration in milliseconds
+#ifndef RISING_SUN_ANIM_DURATION_MS
+#define RISING_SUN_ANIM_DURATION_MS 2500
+#endif
+
 // Enable Android / Mobile App Remote Control & Telemetry API
 #ifndef ENABLE_APP_REMOTE
 #define ENABLE_APP_REMOTE 0

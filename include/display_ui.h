@@ -19,6 +19,9 @@ typedef enum {
 extern UIScreen_t currentScreen;
 
 void initDisplayAndWeb();
+#if ENABLE_RISING_SUN_ANIMATION
+void playRisingSunAnimation();
+#endif
 void updateTFTDisplay();
 #if ENABLE_WIFI_WEBSERVER
 void setupWebServer();
