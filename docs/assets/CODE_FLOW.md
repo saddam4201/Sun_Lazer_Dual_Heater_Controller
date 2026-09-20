@@ -47,38 +47,38 @@ Storage & RTC
 - RTC: DS3231 is handled by src/rtc.cpp (initRTC, getTimestampForLog, setRTCTime, getRTCTimeComponents) and addRTCWebHandlers registers web endpoints.
 
 Detailed sequence: typical run
-1. Boot
+1. Boot & Pre-Heating
    - setup(): Serial + DEBUG_TP, pins, SPI, TFT/Web, initialize MAX31865, HX711, initStorageModules(), loadRecipesFromNVS(), initRTC() -> prints boot diagnostics to Serial.
    - Initialize limit switch failure counters to zero.
    - Tasks created: SafetyTask, PIDTask, UITask, LogTask.
+   - **Continuous Heater Operation:** As soon as boot completes and enters the main screen (`STATE_IDLE` / `STATE_READY`), `Task_TemperaturePID` immediately starts computing PID and driving SSRs to maintain the active recipe's setpoint temperature.
+   - **Safety Limits:** Both heaters are continuously monitored against `MAX_TEMPERATURE_LIMIT_C` (250°C). Any reading > 250°C immediately trips safety shutdown across all states.
 
 2. Program selection & start
-   - User navigates UI to select a recipe and presses OK -> transitionToState(STATE_SAFETY_CHECK).
-   - Safety task verifies sensors; resets max torque; transitions to MOVE_DOWN.
+   - User selects program or changes setpoints from UI.
+   - Pressing Start transitions system to `STATE_SAFETY_CHECK`.
+   - Safety task verifies sensors (must be between -45°C and 250°C); resets max torque; transitions to `STATE_MOVE_DOWN`.
 
-3. Move down and heating
-   - Safety task runs motor down until down limit -> transitions to HEAT_TO_SETPOINT.
-   - **If down limit timeout occurs:**
-     - Motor stops automatically
-     - Failure counter increments (down_limit_fail_count++)
-     - Timestamp recorded (last_down_limit_fail_ms)
-     - TFT warning popup appears via showLimitSwitchWarning()
-     - Process continues to STATE_DOWN_LIMIT (non-blocking behavior)
-   - PID Task reads temps, computes PID, applies SSR time-proportioning to heaters.
-   - When both temps within tolerance, Safety task transitions to TEMPERATURE_READY -> process timer begins.
+3. Pneumatic Down Stroke & Temperature Verification
+   - Safety task activates pneumatic cylinder (`PIN_PNEUMATIC = HIGH`) to move downward until `PIN_DOWN_LIMIT` activates -> transitions to `STATE_DOWN_LIMIT`.
+   - **If down limit timeout occurs (`LIMIT_SWITCH_DOWN_TIMEOUT_SEC`):**
+     - Cylinder stays down or stops, failure counter increments, warning popup appears, and process continues.
+   - In `STATE_DOWN_LIMIT`:
+     - Checks if both temperatures are within tolerance (`inTol`).
+     - If already within tolerance (due to boot pre-heating) or Force Start active -> transitions directly to `STATE_TEMPERATURE_READY` -> `STATE_PROCESS_TIMER`.
+     - If not yet in tolerance -> transitions to `STATE_HEAT_TO_SETPOINT` until reached.
 
 4. Process timer
-   - PIDTask decrements remaining_time_sec while in PROCESS_TIMER.
-   - SafetyTask monitors torque; on over-torque triggers safety shutdown.
+   - `PIN_TORQUE_MOTOR` is activated (runs torque motor).
+   - `Task_SafetyAndControl` decrements process timer and monitors torque via HX711 (trips if torque exceeds limit).
+   - Heaters continue closed-loop PID regulation to setpoint.
 
-5. Timer complete and save
-   - On completion, SafetyTask moves motor up and eventually to SAVE_RECORD.
-   - **If home limit timeout occurs:**
-     - Motor stops automatically
-     - Failure counter increments (home_limit_fail_count++)
-     - Timestamp recorded (last_home_limit_fail_ms)
-     - TFT warning popup appears via showLimitSwitchWarning()
-     - Process continues to STATE_HOME_LIMIT (non-blocking behavior)
+5. Timer complete and retraction
+   - On timer expiry -> `STATE_TIMER_COMPLETE`:
+     - `PIN_TORQUE_MOTOR` is turned OFF.
+     - `PIN_PNEUMATIC` is turned OFF (cylinder retracts upward to home).
+     - **SSRs remain active** to maintain setpoint temperature for subsequent cycles.
+     - Transitions to `STATE_MOVE_UP` -> `STATE_SAVE_RECORD`.
    - SafetyTask composes CSV: timestamp (from getTimestampForLog()), program, set/act temps, process_time_sec, max_torque_nm, result, alarm_code and xQueueSend()s it to xLogQueue.
 
 6. Logging

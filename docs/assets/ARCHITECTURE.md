@@ -19,7 +19,9 @@ Overview (logical modules)
 
 - Temperature loop (src/control_tasks.cpp)
   - PID controllers per heater (include/pid_helper.h)
-  - SSR outputs with time-proportioned control
+  - SSR outputs with time-proportioned control (1000 ms cycle window)
+  - Continuous regulation: Runs once booted in `STATE_IDLE`, `STATE_READY`, and cycle states
+  - Over-temperature safety limit: Continuous trip if either heater exceeds 250°C (`MAX_TEMPERATURE_LIMIT_C`)
 
 - UI & Web (src/display_ui.cpp)
   - TFT screens (home, program select/edit, PID tuning, timer editor, RTC set, service)
@@ -45,7 +47,7 @@ Hardware interfaces and pins (summary)
 - MAX31865: CS1=14, CS2=15
 - HX711 (torque): DOUT=36, SCK=12
 - SSRs: PIN_SSR_1=16, PIN_SSR_2=17
-- Motor: PIN_MOTOR_DOWN=21, PIN_MOTOR_UP=22
+- Actuators: PIN_PNEUMATIC=21 (downward cylinder stroke), PIN_TORQUE_MOTOR=22 (rotational torque during timer)
 - Limit switches: PIN_DOWN_LIMIT=34, PIN_HOME_LIMIT=35 (active LOW)
 - Buttons: PIN_BTN_UP=32, BTN_DOWN=33, BTN_RIGHT=25, BTN_OK=26, BTN_LEFT=27
 - Debug TP: DEBUG_TP_GPIO=24 (default; guarded)

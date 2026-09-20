@@ -2,14 +2,16 @@ Sun Lazer Dual Heater Controller — Release Notes
 
 This README summarizes the recent updates, implemented features, usage notes, and next steps. Treat this as a release-note for the current firmware state.
 
-Version: WIP (post-implementation checkpoint)
-Date: 2026-08-15
+Version: v3.5
+Date: 2026-09-21
 
 Implemented features (summary)
 - PID temperature control
   - Minimal header-only PID implementation bundled (include/pid_helper.h) so builds don't depend on external PID packages.
   - Two independent PID controllers (one per heater). PID outputs mapped to 0..100% and applied as time-proportioned SSR drive.
   - Per-program PID tunings stored in the recipe (ProgramRecipe_t) and editable from the TFT UI.
+  - **Continuous Heater Regulation on Boot:** SSRs begin regulating and maintaining setpoint temperature immediately upon system boot and entry into the main screen (`STATE_IDLE`, `STATE_READY`). The heater controller operates independently of the cycle start button.
+  - **250°C Maximum Temperature Safety Limit:** The absolute safety trip limit is set to 250.0°C (`MAX_TEMPERATURE_LIMIT_C`). Continuous over-temperature monitoring protects against overheating across all operating states, immediately disabling SSRs if exceeded. Setpoints are capped at 250°C.
 
 - TFT UI enhancements
   - Program selection and edit for 10 programs (P01..P10).
@@ -138,5 +140,7 @@ Changelog (high level)
 - Added: Debug test-point compile-time guards and runtime boot prints
 - Added: Separate limit switch timeout system with failure tracking and TFT warning popups
 - **Added: Android Companion App & Remote Control API with Parallel TFT Screen Mirroring (`ENABLE_APP_REMOTE`)**
-
-
+- **Added: Continuous Heater PID Regulation on Boot (`STATE_IDLE` / `STATE_READY`)**
+- **Updated: Maximum Temperature Safety Limit lowered to 250°C (`MAX_TEMPERATURE_LIMIT_C`) and setpoint capped at 250°C**
+- **Added: Emergency Stop Bench Testing toggle (`ENABLE_ESTOP_BENCH_TESTING`)**
+- **Updated: Bumped firmware version to v3.5 and configured upstream GitHub repository**

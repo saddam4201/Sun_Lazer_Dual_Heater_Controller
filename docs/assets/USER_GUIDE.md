@@ -84,12 +84,15 @@ Recipes and NVS (persistent program storage)
 - To save a recipe after editing settings: use the menu command Save / Store recipe. To load: choose Load recipe from the program list.
 
 Running a process
-1. Select desired program/recipe.
-2. Verify time, setpoint, and PID values.
-3. Ensure safety interlocks and limit switches are functional.
-4. Press Start (OK or on-screen start). Monitor temperatures and torque on TFT.
-5. On finish: process results logged to SD; recent log buffer updated.
-6. If an alarm triggers (over-temperature, torque fault, limit switch), the process will stop and log an alarm code. Follow safety instructions to clear and investigate.
+1. **Automatic Pre-Heating on Power-On:** As soon as the system finishes booting and displays the main screen (`STATE_IDLE`), SSRs automatically begin heating to maintain the active program's setpoint. There is no need to press Start to preheat the tools.
+2. Select desired program/recipe (P01–P10) and verify setpoints (max 250°C), timer, and PID values.
+3. Ensure safety interlocks and pneumatic air pressure are ready.
+4. Press Start (OK or on-screen start).
+   - The pneumatic cylinder extends down (`PIN_PNEUMATIC`).
+   - When the down limit switch is reached: if the heaters are already at setpoint (within tolerance), the process timer starts immediately. If not yet at setpoint, it holds in `STATE_HEAT_TO_SETPOINT` until tolerance is reached (or Force Start is used).
+5. During the process: torque motor runs and torque is continuously monitored against the safety limit.
+6. On finish: cylinder retracts home, torque motor stops, and results are logged to SD card. **Heaters continue maintaining setpoint** for the next cycle.
+7. **Safety Limits & Alarms:** If temperature exceeds 250°C (`MAX_TEMPERATURE_LIMIT_C`), or an Emergency Stop is triggered, or an over-torque occurs, heating and motion are immediately cut off and an alarm is displayed.
 
 Interpreting alarms and logs
 - Alarm codes are short numeric values; check README or source code alarm enum to match codes to failures (e.g., OVER_TEMP, TORQUE_LIMIT, RTC_FAIL).
