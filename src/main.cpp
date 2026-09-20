@@ -39,7 +39,7 @@ static bool performStartupChecks(char *reason, size_t len) {
       Serial.printf("[BOOT] Note: H1 sensor not detected/fault (fault 0x%02X). "
                     "Continuing in bench/standby mode.\n",
                     f1);
-    } else if (t1 < -45.0f || t1 > 350.0f) {
+    } else if (t1 < -45.0f || t1 > MAX_TEMPERATURE_LIMIT_C) {
       snprintf(reason, len, "H1 PT100 fault (code 0x%02X, read %.1f C)", f1,
                t1);
       return false;
@@ -50,7 +50,7 @@ static bool performStartupChecks(char *reason, size_t len) {
       Serial.printf("[BOOT] Note: H2 sensor not detected/fault (fault 0x%02X). "
                     "Continuing with single-sensor H1 mapping.\n",
                     f2);
-    } else if (t2 < -45.0f || t2 > 350.0f) {
+    } else if (t2 < -45.0f || t2 > MAX_TEMPERATURE_LIMIT_C) {
       snprintf(reason, len, "H2 PT100 fault (code 0x%02X, read %.1f C)", f2,
                t2);
       return false;

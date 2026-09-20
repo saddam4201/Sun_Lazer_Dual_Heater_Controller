@@ -337,9 +337,14 @@ enum TorqueUnit_t {
   TORQUE_UNIT_LB_IN = 2  // Pound-force inches (1 Nm = 8.851 lb.in)
 };
 
-// Setpoint Temperature Range Limits (-40 deg C to +300 deg C)
+// Over-Temperature Safety Trip Limit (deg C)
+#ifndef MAX_TEMPERATURE_LIMIT_C
+#define MAX_TEMPERATURE_LIMIT_C 250.0f
+#endif
+
+// Setpoint Temperature Range Limits (-40 deg C to +250 deg C)
 #define MIN_SETPOINT_TEMP_C -40.0f
-#define MAX_SETPOINT_TEMP_C 300.0f
+#define MAX_SETPOINT_TEMP_C 250.0f
 
 // Safety Torque Overload Threshold (Nm)
 #define MAX_TORQUE_OVERLOAD_NM 5.0f

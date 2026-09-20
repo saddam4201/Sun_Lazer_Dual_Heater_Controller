@@ -45,12 +45,12 @@ void Task_SafetyAndControl(void *pvParameters) {
         DEBUG_TP_HIGH();
 
         // Continuous Over-Temperature Safety Trip
-        if ((sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT) &&
-            (sysStatus.h1_actual_c > 350.0f || sysStatus.h2_actual_c > 350.0f)) {
+        if (sysStatus.currentState != STATE_ALARM_FAULT &&
+            (sysStatus.h1_actual_c > MAX_TEMPERATURE_LIMIT_C || sysStatus.h2_actual_c > MAX_TEMPERATURE_LIMIT_C)) {
             char tripMsg[32];
-            if (sysStatus.h1_actual_c > 350.0f && sysStatus.h2_actual_c > 350.0f) {
+            if (sysStatus.h1_actual_c > MAX_TEMPERATURE_LIMIT_C && sysStatus.h2_actual_c > MAX_TEMPERATURE_LIMIT_C) {
                 snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H1:%.0f H2:%.0fC", sysStatus.h1_actual_c, sysStatus.h2_actual_c);
-            } else if (sysStatus.h1_actual_c > 350.0f) {
+            } else if (sysStatus.h1_actual_c > MAX_TEMPERATURE_LIMIT_C) {
                 snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H1: %.1f C", sysStatus.h1_actual_c);
             } else {
                 snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H2: %.1f C", sysStatus.h2_actual_c);
@@ -178,14 +178,14 @@ void Task_SafetyAndControl(void *pvParameters) {
 
             case STATE_SAFETY_CHECK:
                 s_processAbortedByLimitSwitch = false;
-                if (isnan(sysStatus.h1_actual_c) || sysStatus.h1_actual_c < -45.0f || sysStatus.h1_actual_c > 350.0f ||
-                    isnan(sysStatus.h2_actual_c) || sysStatus.h2_actual_c < -45.0f || sysStatus.h2_actual_c > 350.0f) {
+                if (isnan(sysStatus.h1_actual_c) || sysStatus.h1_actual_c < -45.0f || sysStatus.h1_actual_c > MAX_TEMPERATURE_LIMIT_C ||
+                    isnan(sysStatus.h2_actual_c) || sysStatus.h2_actual_c < -45.0f || sysStatus.h2_actual_c > MAX_TEMPERATURE_LIMIT_C) {
                     char tripMsg[32];
-                    if (sysStatus.h1_actual_c > 350.0f && sysStatus.h2_actual_c > 350.0f) {
+                    if (sysStatus.h1_actual_c > MAX_TEMPERATURE_LIMIT_C && sysStatus.h2_actual_c > MAX_TEMPERATURE_LIMIT_C) {
                         snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H1:%.0f H2:%.0fC", sysStatus.h1_actual_c, sysStatus.h2_actual_c);
-                    } else if (sysStatus.h1_actual_c > 350.0f) {
+                    } else if (sysStatus.h1_actual_c > MAX_TEMPERATURE_LIMIT_C) {
                         snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H1: %.1f C", sysStatus.h1_actual_c);
-                    } else if (sysStatus.h2_actual_c > 350.0f) {
+                    } else if (sysStatus.h2_actual_c > MAX_TEMPERATURE_LIMIT_C) {
                         snprintf(tripMsg, sizeof(tripMsg), "OVER-TEMP H2: %.1f C", sysStatus.h2_actual_c);
                     } else {
                         snprintf(tripMsg, sizeof(tripMsg), "SENSOR DISCONNECT FAULT");
@@ -316,9 +316,7 @@ void Task_SafetyAndControl(void *pvParameters) {
                 break;
 
             case STATE_TIMER_COMPLETE:
-                // Timer expired: turn OFF SSRs, turn OFF torque motor, and turn OFF pneumatic (cylinder returns home)
-                safeDigitalWrite(PIN_SSR_1, LOW);
-                safeDigitalWrite(PIN_SSR_2, LOW);
+                // Timer expired: turn OFF torque motor and pneumatic (cylinder returns home); SSRs continue temperature regulation
                 safeDigitalWrite(PIN_TORQUE_MOTOR, LOW);
                 safeDigitalWrite(PIN_PNEUMATIC, LOW);
                 sysStatus.torque_motor_running = false;
@@ -509,7 +507,8 @@ void Task_TemperaturePID(void *pvParameters) {
             float h1_tgt = recipes[sysStatus.active_program_idx].h1_setpoint_c;
             float h2_tgt = recipes[sysStatus.active_program_idx].h2_setpoint_c;
 
-            if (digitalRead(PIN_SSR_1) == HIGH || sysStatus.currentState == STATE_HEAT_TO_SETPOINT || sysStatus.currentState == STATE_PROCESS_TIMER) {
+            bool h1_heating = (digitalRead(PIN_SSR_1) == HIGH || (sysStatus.currentState != STATE_ALARM_FAULT && !sysStatus.emergency_stop_active && h1_output > 0.0));
+            if (h1_heating) {
                 if (sysStatus.h1_actual_c < h1_tgt) {
                     sysStatus.h1_actual_c += (h1_tgt - sysStatus.h1_actual_c) * 0.05f + 0.3f;
                     if (sysStatus.h1_actual_c > h1_tgt) sysStatus.h1_actual_c = h1_tgt;
@@ -521,7 +520,8 @@ void Task_TemperaturePID(void *pvParameters) {
                 }
             }
 
-            if (digitalRead(PIN_SSR_2) == HIGH || sysStatus.currentState == STATE_HEAT_TO_SETPOINT || sysStatus.currentState == STATE_PROCESS_TIMER) {
+            bool h2_heating = (digitalRead(PIN_SSR_2) == HIGH || (sysStatus.currentState != STATE_ALARM_FAULT && !sysStatus.emergency_stop_active && h2_output > 0.0));
+            if (h2_heating) {
                 if (sysStatus.h2_actual_c < h2_tgt) {
                     sysStatus.h2_actual_c += (h2_tgt - sysStatus.h2_actual_c) * 0.05f + 0.3f;
                     if (sysStatus.h2_actual_c > h2_tgt) sysStatus.h2_actual_c = h2_tgt;
@@ -553,7 +553,12 @@ void Task_TemperaturePID(void *pvParameters) {
                           recipes[sysStatus.active_program_idx].h2_Ki,
                           recipes[sysStatus.active_program_idx].h2_Kd);
 
-        if (sysStatus.currentState == STATE_HEAT_TO_SETPOINT || sysStatus.currentState == STATE_PROCESS_TIMER) {
+        bool heaterEnable = (sysStatus.currentState != STATE_ALARM_FAULT &&
+                             !sysStatus.emergency_stop_active &&
+                             sysStatus.h1_actual_c <= MAX_TEMPERATURE_LIMIT_C &&
+                             sysStatus.h2_actual_c <= MAX_TEMPERATURE_LIMIT_C);
+
+        if (heaterEnable) {
             // Compute PID conditionally per-heater
 #if ENABLE_H1
             h1_pid.Compute();
