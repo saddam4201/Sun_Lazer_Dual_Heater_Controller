@@ -438,16 +438,26 @@ void handleButtonInputs() {
         if (c == '\r' || c == '\n') {
             if (s_serialCmdLen > 0) {
                 s_serialCmdBuf[s_serialCmdLen] = '\0';
-                if (strcmp(s_serialCmdBuf, ":estop_bypass on") == 0 || strcmp(s_serialCmdBuf, ":estop off") == 0) {
+                if (strcmp(s_serialCmdBuf, ":estop_bypass on") == 0 || 
+                    strcmp(s_serialCmdBuf, ":estop_bypass 1") == 0 ||
+                    strcmp(s_serialCmdBuf, ":estop_bypass") == 0 ||
+                    strcmp(s_serialCmdBuf, ":estop off") == 0 || 
+                    strcmp(s_serialCmdBuf, ":estop 0") == 0 ||
+                    strcmp(s_serialCmdBuf, ":estop false") == 0 ||
+                    strcmp(s_serialCmdBuf, ":reset_estop") == 0 ||
+                    strcmp(s_serialCmdBuf, ":clear_estop") == 0) {
                     g_simEstopBypass = true;
                     sysStatus.emergency_stop_active = false;
                     g_simEmergencyStop = false;
                     if (sysStatus.currentState == STATE_ALARM_FAULT) {
                         transitionToState(STATE_READY);
                     }
-                } else if (strcmp(s_serialCmdBuf, ":estop_bypass off") == 0) {
+                } else if (strcmp(s_serialCmdBuf, ":estop_bypass off") == 0 ||
+                           strcmp(s_serialCmdBuf, ":estop_bypass 0") == 0) {
                     g_simEstopBypass = false;
-                } else if (strcmp(s_serialCmdBuf, ":estop on") == 0) {
+                } else if (strcmp(s_serialCmdBuf, ":estop on") == 0 || 
+                           strcmp(s_serialCmdBuf, ":estop 1") == 0 ||
+                           strcmp(s_serialCmdBuf, ":estop true") == 0) {
                     g_simEmergencyStop = true;
                     sysStatus.emergency_stop_active = true;
                 }
@@ -2245,7 +2255,8 @@ void updateTFTDisplay() {
 
     bool hasPopup = (rtcConfirmUntil && millis() < rtcConfirmUntil) ||
                     (limitSwitchWarningUntil && millis() < limitSwitchWarningUntil) ||
-                    (sysStatus.forceStartPending);
+                    (sysStatus.forceStartPending) ||
+                    (sysStatus.emergency_stop_active);
 
     bool fullRedraw = (currentScreen != s_lastDrawnScreen);
 
@@ -2426,7 +2437,12 @@ void updateTFTDisplay() {
             s_estopDrawn = true;
         }
     } else {
-        s_estopDrawn = false;
+        if (s_estopDrawn) {
+            s_estopDrawn = false;
+            // Force full screen redraw to completely clear the E-stop overlay
+            tft.fillScreen(TFT_BLACK);
+            s_lastDrawnScreen = (UIScreen_t)0xFF;
+        }
     }
 
     // process RTC blink pattern (non-blocking)
