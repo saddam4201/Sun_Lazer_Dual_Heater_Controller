@@ -139,25 +139,23 @@ void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELL
     tft.fillRect(0, 0, 320, 40, 0x0841); // Dark charcoal
     tft.drawFastHLine(0, 40, 320, TFT_DARKCYAN);
 
-    tft.setTextFont(2);
-    // 1. Left top corner: SUN SMART
+    tft.setFreeFont(FONT_FREE_BOLD_9);
+    // 1. Left top corner: SUN SMART in Bold
     tft.setTextColor(TFT_CYAN, 0x0841);
     tft.drawString("SUN SMART", 10, 4);
 
-    // 2. Middle: Time in HH:MM
+    // 2. Right corner: Time in HH:MM only in Bold
     char timeStr[16];
     getCurrentTimeHHMMString(timeStr, sizeof(timeStr));
     tft.setTextColor(TFT_WHITE, 0x0841);
-    tft.drawCentreString(timeStr, 160, 4);
+    tft.drawRightString(timeStr, 310, 4);
 
     // 3. Sub-screen Title centered below Time (y = 20..38)
     if (rightBadgeText && rightBadgeText[0]) {
-        tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(badgeColor, 0x0841);
         int16_t bW = tft.textWidth(rightBadgeText);
         tft.drawString(rightBadgeText, (320 - bW) / 2, 22);
     }
-    tft.setFreeFont(FONT_FREE_BOLD_9);
 }
 
 static uint32_t s_welcomeStartMs = 0;
@@ -1049,15 +1047,9 @@ void drawHomeScreen(bool fullRedraw) {
     static bool last_boot_ok = true;
     static bool last_start_mode = false;
     static int last_prog_idx = -1;
-    static char last_time_str[8] = {0};
-
-    char cur_time_str[8];
-    getCurrentTimeHHMMString(cur_time_str, sizeof(cur_time_str));
-    bool time_changed = (strcmp(cur_time_str, last_time_str) != 0);
 
     bool state_changed = (sysStatus.currentState != last_state || sysStatus.boot_ok != last_boot_ok || 
-                          sysStatus.start_mode_auto != last_start_mode || sysStatus.active_program_idx != last_prog_idx ||
-                          time_changed);
+                          sysStatus.start_mode_auto != last_start_mode || sysStatus.active_program_idx != last_prog_idx);
 
     if (fullRedraw || state_changed) {
         uint16_t statusBorder = TFT_DARKCYAN;
@@ -1139,26 +1131,25 @@ void drawHomeScreen(bool fullRedraw) {
         tft.drawRoundRect(6, 2, 308, 20, 3, statusBorder);
         tft.fillRect(7, 3, 306, 18, TFT_BLACK);
 
-        tft.setTextFont(2);
-        // 1. Left: SUN SMART
+        tft.setFreeFont(FONT_FREE_BOLD_9);
+        // 1. Left: SUN SMART (Bold)
         tft.setTextColor(TFT_CYAN, TFT_BLACK);
         tft.drawString("SUN SMART", 12, 4);
 
-        // 2. Middle: Clock HH:MM
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.drawCentreString(cur_time_str, 160, 4);
+        // 2. Middle: Selected Program Name (Bold)
+        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+        char pgmBuf[24];
+        snprintf(pgmBuf, sizeof(pgmBuf), "%s", recipes[sysStatus.active_program_idx].name);
+        tft.drawCentreString(pgmBuf, 160, 4);
 
-        // 3. Right: Status
+        // 3. Right: Status (Bold)
         tft.setTextColor(statusTextColor, TFT_BLACK);
         tft.drawRightString(statusLine, 306, 4);
-
-        tft.setFreeFont(FONT_FREE_BOLD_9);
 
         last_state = sysStatus.currentState;
         last_boot_ok = sysStatus.boot_ok;
         last_start_mode = sysStatus.start_mode_auto;
         last_prog_idx = sysStatus.active_program_idx;
-        strncpy(last_time_str, cur_time_str, sizeof(last_time_str));
     }
 
     // 3. Card 1: Heater 1 (y = 26..110, h = 84)
@@ -2305,17 +2296,16 @@ void updateTFTDisplay() {
             break;
     }
 
-    // Live RTC clock update in mobile header (updates HH:MM in middle when minute changes)
+    // Live RTC clock update in mobile header (updates HH:MM on right corner in bold when minute changes)
     static char s_lastHeaderTime[8] = {0};
     if (!hasPopup && currentScreen != SCREEN_HOME) {
         char timeStr[8];
         getCurrentTimeHHMMString(timeStr, sizeof(timeStr));
         if (strcmp(timeStr, s_lastHeaderTime) != 0) {
-            tft.setTextFont(2);
-            tft.setTextColor(TFT_WHITE, 0x0841);
-            tft.fillRect(130, 2, 60, 18, 0x0841); // clear middle clock area
-            tft.drawCentreString(timeStr, 160, 4);
+            tft.fillRect(240, 2, 75, 18, 0x0841); // clear right clock area
             tft.setFreeFont(FONT_FREE_BOLD_9);
+            tft.setTextColor(TFT_WHITE, 0x0841);
+            tft.drawRightString(timeStr, 310, 4);
             strncpy(s_lastHeaderTime, timeStr, sizeof(s_lastHeaderTime));
         }
     }
