@@ -81,7 +81,11 @@ void loadRecipesFromNVS() {
 
             if (bytesRead == sizeof(ProgramRecipe_t) && recipes[i].magic == RECIPE_MAGIC) {
                 if (recipes[i].version == RECIPE_VERSION) {
-                    // valid current-format recipe loaded
+                    // Validate and clamp tolerance to strictly positive bounds
+                    if (recipes[i].temp_tolerance_c < MIN_TEMP_TOLERANCE_C || recipes[i].temp_tolerance_c > MAX_TEMP_TOLERANCE_C) {
+                        recipes[i].temp_tolerance_c = 2.0f;
+                        needsReSave = true;
+                    }
                     anyLoaded = true;
                     continue;
                 }
@@ -151,7 +155,7 @@ void loadRecipesFromNVS() {
         recipes[i].h1_setpoint_c = 50.0f;
         recipes[i].h2_setpoint_c = 50.0f;
         recipes[i].process_time_sec = 60;
-        recipes[i].temp_tolerance_c = 5.0f;
+        recipes[i].temp_tolerance_c = 2.0f;
         recipes[i].h1_temp_offset_pct = 0.0f;
         recipes[i].h2_temp_offset_pct = 0.0f;
         recipes[i].torque_unit = (uint8_t)TORQUE_UNIT_NM;

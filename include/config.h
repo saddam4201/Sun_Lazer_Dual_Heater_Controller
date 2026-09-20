@@ -8,7 +8,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v2.4"
+#define FIRMWARE_VERSION "v2.5"
 #endif
 
 // Enable WiFi & WebServer support (set to 0 for bench testing to save ~500 KB flash)
@@ -136,7 +136,7 @@ extern bool g_simHomeLimit;
 
 // Sensor CS Pins
 #define PIN_MAX31865_CS1 14
-#define PIN_MAX31865_CS2 14
+#define PIN_MAX31865_CS2 15
 
 // Torque Sensor Pins (TQ10 via HX711)
 #define PIN_HX711_DOUT 36
@@ -295,6 +295,10 @@ enum TorqueUnit_t {
 
 // Safety Torque Overload Threshold (Nm)
 #define MAX_TORQUE_OVERLOAD_NM 5.0f
+
+// Temperature Tolerance Limits (strictly positive)
+#define MIN_TEMP_TOLERANCE_C   0.5f
+#define MAX_TEMP_TOLERANCE_C   15.0f
 
 // Compile-time macro to enable/disable temperature percentage manipulation
 #ifndef ENABLE_TEMP_MANIPULATION

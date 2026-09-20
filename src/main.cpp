@@ -5,6 +5,7 @@
 #include "control_tasks.h"
 #include "rtc.h"
 #include "gpio_safe.h"
+#include <esp_task_wdt.h>
 #if ENABLE_SERIAL_TFT
 #include "serial_display.h"
 #endif
@@ -40,7 +41,7 @@ static bool performStartupChecks(char *reason, size_t len) {
   #endif
   #if ENABLE_H2
         if (f2 != 0 || isnan(t2)) {
-            Serial.printf("[BOOT] Note: H2 sensor not detected/fault (fault 0x%02X). Continuing in bench/standby mode.\n", f2);
+            Serial.printf("[BOOT] Note: H2 sensor not detected/fault (fault 0x%02X). Continuing with single-sensor H1 mapping.\n", f2);
         } else if (t2 < -45.0f || t2 > 350.0f) {
             snprintf(reason, len, "H2 PT100 fault (code 0x%02X, read %.1f C)", f2, t2);
             return false;
@@ -182,6 +183,9 @@ void setup() {
     // Sync Structures
     xSemaphoreSPI = xSemaphoreCreateMutex();
     xLogQueue = xQueueCreate(10, 256);
+
+    // Initialize ESP32 Task Watchdog Timer (10s timeout, panic/reset on timeout)
+    esp_task_wdt_init(10, true);
 
     // Hardware SPI & Driver Setup
     SPI.begin(PIN_VSPI_SCK, PIN_VSPI_MISO, PIN_VSPI_MOSI);

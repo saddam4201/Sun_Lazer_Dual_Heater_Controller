@@ -4,6 +4,7 @@
 #include "debug_config.h"
 #include "rtc.h"
 #include "pid_helper.h"
+#include <esp_task_wdt.h>
 
 // PID variables for two heaters
 static double h1_input, h1_setpoint, h1_output;
@@ -36,8 +37,17 @@ void Task_SafetyAndControl(void *pvParameters) {
     uint32_t movement_timer_ms = 0;
     static bool s_processAbortedByLimitSwitch = false;
 
+    esp_task_wdt_add(NULL);
+
     for (;;) {
+        esp_task_wdt_reset();
         DEBUG_TP_HIGH();
+
+        // Continuous Over-Temperature Safety Trip (>350°C)
+        if ((sysStatus.currentState != STATE_IDLE && sysStatus.currentState != STATE_READY && sysStatus.currentState != STATE_ALARM_FAULT) &&
+            (sysStatus.h1_actual_c > 350.0f || sysStatus.h2_actual_c > 350.0f)) {
+            triggerSafetyShutdown("OVER-TEMPERATURE TRIP (>350 C)");
+        }
 
         // Read physical limit switches with debounce (Active LOW) + Virtual Simulator override
         static uint8_t down_deb_count = 0;
@@ -118,8 +128,7 @@ void Task_SafetyAndControl(void *pvParameters) {
                 } else {
                     safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
                     if (millis() - movement_timer_ms > (LIMIT_SWITCH_DOWN_TIMEOUT_SEC * 1000UL)) {
-                        // Timeout reached: stop motor and proceed to next stage to avoid blocking the process.
-                        // Track failure and provide warning
+                        // Timeout reached: stop motor and abort to fault to prevent heating in unknown position
                         sysStatus.down_limit_fail_count++;
                         sysStatus.last_down_limit_fail_ms = millis();
                         
@@ -130,7 +139,7 @@ void Task_SafetyAndControl(void *pvParameters) {
                         Serial.printf("[WARNING] Down limit switch not detected within %u s. Failure count: %u\n", 
                                       (unsigned)LIMIT_SWITCH_DOWN_TIMEOUT_SEC, (unsigned)sysStatus.down_limit_fail_count);
                         safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
-                        transitionToState(STATE_DOWN_LIMIT);
+                        triggerSafetyShutdown("DOWN LIMIT TIMEOUT");
                     }
                 }
                 break;
@@ -316,23 +325,30 @@ float readPT100Temperature(Adafruit_MAX31865 &maxSensor, uint8_t &faultCode) {
 void Task_TemperaturePID(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
+    esp_task_wdt_add(NULL);
+
     h1_pid.SetMode(AUTOMATIC);
     h1_pid.SetOutputLimits(0, 100);
     h2_pid.SetMode(AUTOMATIC);
     h2_pid.SetOutputLimits(0, 100);
 
     for (;;) {
+        esp_task_wdt_reset();
         // Dynamic time window: 1s for SSR (fast PWM/switching), 10s for Normal Mechanical Relay
         const uint32_t cycleWindowMs = (g_relayType == RELAY_TYPE_SSR) ? 1000 : 10000;
 
 #if ENABLE_MAX31865
         if (!g_benchTempSimEnabled) {
-            // Real Hardware Mode: actively read MAX31865 sensor on CS 14
+            // Real Hardware Mode: actively read MAX31865 sensors (CS1 & CS2)
             if (xSemaphoreTake(xSemaphoreSPI, pdMS_TO_TICKS(250)) == pdTRUE) {
-                uint8_t f1 = 0;
+                uint8_t f1 = 0, f2 = 0;
                 float raw1 = readPT100Temperature(max1, f1);
+                float raw2 = readPT100Temperature(max2, f2);
                 xSemaphoreGive(xSemaphoreSPI);
 
+                bool isRunning = (sysStatus.currentState == STATE_HEAT_TO_SETPOINT || sysStatus.currentState == STATE_PROCESS_TIMER);
+
+                // Sensor 1 (Heater 1)
                 if (!isnan(raw1)) {
                     static float raw1_smoothed = 25.0f;
                     if (raw1_smoothed < -40.0f || raw1_smoothed == 25.0f) {
@@ -340,24 +356,44 @@ void Task_TemperaturePID(void *pvParameters) {
                     } else {
                         raw1_smoothed = (raw1_smoothed * 0.7f) + (raw1 * 0.3f);
                     }
-
 #if ENABLE_TEMP_MANIPULATION
-                    // Manipulate actual temp with x% of the heater threshold (setpoint)
                     float h1_set = recipes[sysStatus.active_program_idx].h1_setpoint_c;
-                    float h2_set = recipes[sysStatus.active_program_idx].h2_setpoint_c;
                     float h1_pct = recipes[sysStatus.active_program_idx].h1_temp_offset_pct;
-                    float h2_pct = recipes[sysStatus.active_program_idx].h2_temp_offset_pct;
                     sysStatus.h1_actual_c = raw1_smoothed + (h1_pct / 100.0f) * h1_set;
-                    sysStatus.h2_actual_c = raw1_smoothed + (h2_pct / 100.0f) * h2_set;
 #else
                     sysStatus.h1_actual_c = raw1_smoothed;
-                    sysStatus.h2_actual_c = raw1_smoothed;
 #endif
-                } else if (f1 != 0 || isnan(raw1)) {
-                    DEBUG_PRINTF("[MAX31865] H1 Fault: 0x%02X\n", f1);
-                    if (sysStatus.h1_actual_c <= 0.0f) {
-                        sysStatus.h1_actual_c = 25.0f;
-                        sysStatus.h2_actual_c = 25.0f;
+                } else if (isRunning) {
+                    triggerSafetyShutdown("H1 PT100 SENSOR FAULT");
+                }
+
+                // Sensor 2 (Heater 2): read CS2, or fallback to CS1 if unpopulated
+                if (!isnan(raw2)) {
+                    static float raw2_smoothed = 25.0f;
+                    if (raw2_smoothed < -40.0f || raw2_smoothed == 25.0f) {
+                        raw2_smoothed = raw2;
+                    } else {
+                        raw2_smoothed = (raw2_smoothed * 0.7f) + (raw2 * 0.3f);
+                    }
+#if ENABLE_TEMP_MANIPULATION
+                    float h2_set = recipes[sysStatus.active_program_idx].h2_setpoint_c;
+                    float h2_pct = recipes[sysStatus.active_program_idx].h2_temp_offset_pct;
+                    sysStatus.h2_actual_c = raw2_smoothed + (h2_pct / 100.0f) * h2_set;
+#else
+                    sysStatus.h2_actual_c = raw2_smoothed;
+#endif
+                } else {
+                    // Fallback to Sensor 1 if Sensor 2 is not wired / detected
+                    if (!isnan(raw1)) {
+#if ENABLE_TEMP_MANIPULATION
+                        float h2_set = recipes[sysStatus.active_program_idx].h2_setpoint_c;
+                        float h2_pct = recipes[sysStatus.active_program_idx].h2_temp_offset_pct;
+                        sysStatus.h2_actual_c = sysStatus.h1_actual_c + (h2_pct / 100.0f) * h2_set;
+#else
+                        sysStatus.h2_actual_c = sysStatus.h1_actual_c;
+#endif
+                    } else if (isRunning) {
+                        triggerSafetyShutdown("H2 PT100 SENSOR FAULT");
                     }
                 }
             }
@@ -453,13 +489,18 @@ void Task_TemperaturePID(void *pvParameters) {
             safeDigitalWrite(PIN_SSR_2, LOW);
         }
 
+        static ProcessState_t s_last_timer_state = STATE_IDLE;
         static uint8_t tick_count = 0;
         if (sysStatus.currentState == STATE_PROCESS_TIMER) {
+            if (s_last_timer_state != STATE_PROCESS_TIMER) {
+                tick_count = 0; // Reset on entry so first second is a full 1000ms
+            }
             if (++tick_count >= 10) {
                 tick_count = 0;
                 if (sysStatus.remaining_time_sec > 0) sysStatus.remaining_time_sec--;
             }
         }
+        s_last_timer_state = sysStatus.currentState;
 
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
     }

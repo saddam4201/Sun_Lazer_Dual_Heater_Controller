@@ -60,6 +60,10 @@ public:
         double input = *myInput;
         double error = *mySetpoint - input;
         integral += (ki * error * timeChange);
+        // Anti-windup: clamp integral to output limits
+        if (integral > outMax) integral = outMax;
+        else if (integral < outMin) integral = outMin;
+
         // derivative on measurement
         double dInput = (input - lastInput) / timeChange;
 

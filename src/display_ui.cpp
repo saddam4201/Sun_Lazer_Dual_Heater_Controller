@@ -596,12 +596,10 @@ void handleButtonInputs() {
             if (btnUp) {
                 if (sysStatus.active_program_idx > 0) {
                     sysStatus.active_program_idx--;
-                    saveActiveProgramToNVS(sysStatus.active_program_idx);
                 }
             } else if (btnDown) {
                 if (sysStatus.active_program_idx < 9) { // 10 programs (Program 01..10)
                     sysStatus.active_program_idx++;
-                    saveActiveProgramToNVS(sysStatus.active_program_idx);
                 }
             } else if (btnRight) {
                 saveActiveProgramToNVS(sysStatus.active_program_idx);
@@ -665,7 +663,7 @@ void handleButtonInputs() {
                         rec.process_time_sec += inc;
                         if (rec.process_time_sec > 9999) rec.process_time_sec = 9999;
                     } else if (selectedEditField == 4) {
-                        if (rec.temp_tolerance_c < 10.0f) rec.temp_tolerance_c += 0.5f;
+                        if (rec.temp_tolerance_c < MAX_TEMP_TOLERANCE_C) rec.temp_tolerance_c += 0.5f;
                     } else if (selectedEditField == 5) {
                         if (rec.h1_temp_offset_pct < 20.0f) rec.h1_temp_offset_pct += 0.5f;
                     } else if (selectedEditField == 6) {
@@ -688,7 +686,7 @@ void handleButtonInputs() {
                         if (rec.process_time_sec >= dec + 1) rec.process_time_sec -= dec;
                         else rec.process_time_sec = 1;
                     } else if (selectedEditField == 4) {
-                        if (rec.temp_tolerance_c > -10.0f) rec.temp_tolerance_c -= 0.5f;
+                        if (rec.temp_tolerance_c > MIN_TEMP_TOLERANCE_C) rec.temp_tolerance_c -= 0.5f;
                     } else if (selectedEditField == 5) {
                         if (rec.h1_temp_offset_pct > -20.0f) rec.h1_temp_offset_pct -= 0.5f;
                     } else if (selectedEditField == 6) {
@@ -2553,23 +2551,59 @@ static void handleApiControl() {
             }
         }
     } else if (action.equalsIgnoreCase("jog_up")) {
+        bool isProcessRunning = (sysStatus.currentState != STATE_IDLE && 
+                                 sysStatus.currentState != STATE_READY && 
+                                 sysStatus.currentState != STATE_ALARM_FAULT);
+        if (isProcessRunning) {
+            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Cannot jog while process is running\"}");
+            return;
+        }
+        if (sysStatus.home_limit_active) {
+            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Already at home limit\"}");
+            return;
+        }
         safeDigitalWrite(PIN_MOTOR_UP, HIGH);
-        delay(500);
+        delay(250);
         safeDigitalWrite(PIN_MOTOR_UP, LOW);
-        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Jog up 500ms executed\"}");
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Jog up executed\"}");
         return;
     } else if (action.equalsIgnoreCase("jog_down")) {
+        bool isProcessRunning = (sysStatus.currentState != STATE_IDLE && 
+                                 sysStatus.currentState != STATE_READY && 
+                                 sysStatus.currentState != STATE_ALARM_FAULT);
+        if (isProcessRunning) {
+            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Cannot jog while process is running\"}");
+            return;
+        }
+        if (sysStatus.down_limit_active) {
+            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Already at down limit\"}");
+            return;
+        }
         safeDigitalWrite(PIN_MOTOR_DOWN, HIGH);
-        delay(500);
+        delay(250);
         safeDigitalWrite(PIN_MOTOR_DOWN, LOW);
-        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Jog down 500ms executed\"}");
+        webServer.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Jog down executed\"}");
         return;
     } else if (action.equalsIgnoreCase("toggle_ssr1")) {
+        bool isProcessRunning = (sysStatus.currentState != STATE_IDLE && 
+                                 sysStatus.currentState != STATE_READY && 
+                                 sysStatus.currentState != STATE_ALARM_FAULT);
+        if (isProcessRunning) {
+            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Cannot toggle SSR while process is running\"}");
+            return;
+        }
         int st = digitalRead(PIN_SSR_1);
         safeDigitalWrite(PIN_SSR_1, st ? LOW : HIGH);
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"ssr1\":" + String(!st ? "true" : "false") + "}");
         return;
     } else if (action.equalsIgnoreCase("toggle_ssr2")) {
+        bool isProcessRunning = (sysStatus.currentState != STATE_IDLE && 
+                                 sysStatus.currentState != STATE_READY && 
+                                 sysStatus.currentState != STATE_ALARM_FAULT);
+        if (isProcessRunning) {
+            webServer.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Cannot toggle SSR while process is running\"}");
+            return;
+        }
         int st = digitalRead(PIN_SSR_2);
         safeDigitalWrite(PIN_SSR_2, st ? LOW : HIGH);
         webServer.send(200, "application/json", "{\"status\":\"ok\",\"ssr2\":" + String(!st ? "true" : "false") + "}");
