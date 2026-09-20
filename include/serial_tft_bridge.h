@@ -258,9 +258,10 @@ public:
 
     uint8_t getEffectiveFontSize() const {
         if (_curFreeFont) {
-            if (_curFreeFont == &FreeSansBold18pt7b) return 4;
-            if (_curFreeFont == &FreeSansBold12pt7b) return 3;
-            return 2; // Default for FreeSansBold9pt7b
+            if (_curFreeFont->yAdvance >= 40) return 4; // FreeSansBold18pt7b (yAdvance = 42)
+            if (_curFreeFont->yAdvance >= 28) return 3; // FreeSansBold12pt7b (yAdvance = 29)
+            if (_curFreeFont->yAdvance >= 20) return 2; // FreeSansBold9pt7b  (yAdvance = 22)
+            return 2;
         }
         return max((uint8_t)1, _curTextSize);
     }
@@ -395,9 +396,8 @@ public:
 #endif
 #if ENABLE_UART_VIRTUAL_TFT
         if (_uart_enabled && _uartStream && string) {
-            int charW = (font >= 4) ? 14 : ((font >= 2) ? 8 : 6);
-            int len = strlen(string);
-            int poX = dX - (len * charW) / 2;
+            int16_t w = TFT_eSPI::textWidth(string, font);
+            int32_t poX = dX - (w / 2);
             if (poX < 0) poX = 0;
             sendUartText(string, poX, poY, font);
         }
@@ -406,7 +406,22 @@ public:
     }
 
     int16_t drawCentreString(const char *string, int32_t dX, int32_t poY) {
-        return drawCentreString(string, dX, poY, getEffectiveFontSize());
+#if ENABLE_PHYSICAL_TFT
+        if (_physical_enabled) {
+            _inHighLevelText = true;
+            TFT_eSPI::drawCentreString(string, dX, poY, 1);
+            _inHighLevelText = false;
+        }
+#endif
+#if ENABLE_UART_VIRTUAL_TFT
+        if (_uart_enabled && _uartStream && string) {
+            int16_t w = TFT_eSPI::textWidth(string);
+            int32_t poX = dX - (w / 2);
+            if (poX < 0) poX = 0;
+            sendUartText(string, poX, poY, getEffectiveFontSize());
+        }
+#endif
+        return 0;
     }
 
     int16_t drawRightString(const char *string, int32_t dX, int32_t poY, uint8_t font) {
@@ -419,9 +434,8 @@ public:
 #endif
 #if ENABLE_UART_VIRTUAL_TFT
         if (_uart_enabled && _uartStream && string) {
-            int charW = (font >= 4) ? 14 : ((font >= 2) ? 8 : 6);
-            int len = strlen(string);
-            int poX = dX - (len * charW);
+            int16_t w = TFT_eSPI::textWidth(string, font);
+            int32_t poX = dX - w;
             if (poX < 0) poX = 0;
             sendUartText(string, poX, poY, font);
         }
@@ -430,7 +444,22 @@ public:
     }
 
     int16_t drawRightString(const char *string, int32_t dX, int32_t poY) {
-        return drawRightString(string, dX, poY, getEffectiveFontSize());
+#if ENABLE_PHYSICAL_TFT
+        if (_physical_enabled) {
+            _inHighLevelText = true;
+            TFT_eSPI::drawRightString(string, dX, poY, 1);
+            _inHighLevelText = false;
+        }
+#endif
+#if ENABLE_UART_VIRTUAL_TFT
+        if (_uart_enabled && _uartStream && string) {
+            int16_t w = TFT_eSPI::textWidth(string);
+            int32_t poX = dX - w;
+            if (poX < 0) poX = 0;
+            sendUartText(string, poX, poY, getEffectiveFontSize());
+        }
+#endif
+        return 0;
     }
 
 private:

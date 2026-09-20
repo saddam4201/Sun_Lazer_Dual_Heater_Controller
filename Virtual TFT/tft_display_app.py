@@ -97,7 +97,7 @@ ILI9341_ORANGE      = 0xFDA0
 # MAIN APPLICATION
 # ==============================================================================
 FIRMWARE_NAME = "Sun Lazer Dual Heater Controller"
-APP_VERSION   = "v2.7"
+APP_VERSION   = "v2.8"
 
 
 class VirtualTFTApp(tk.Tk):
@@ -133,12 +133,13 @@ class VirtualTFTApp(tk.Tk):
 
         # Typography
         self.font_family = "Segoe UI"
+        self.tft_font_family = "Arial"
         try:
             import tkinter.font as tkfont
             avail = tkfont.families()
-            for cand in ("FreeSansBold", "FreeSans", "Segoe UI", "Inter", "Roboto", "Consolas", "Arial"):
+            for cand in ("FreeSansBold", "FreeSans", "Arial", "Helvetica", "Segoe UI"):
                 if cand in avail:
-                    self.font_family = cand
+                    self.tft_font_family = cand
                     break
         except Exception:
             pass
@@ -869,16 +870,19 @@ class VirtualTFTApp(tk.Tk):
             f_size = -int(8 * self.scale)
             weight = "normal"
         elif size == 2:
-            f_size = -int(10.5 * self.scale)
+            # FreeSansBold9pt7b: capital/digit ascent 13px, advance 22px
+            f_size = -int(14 * self.scale)
             weight = "bold"
         elif size == 3:
-            f_size = -int(13.5 * self.scale)
+            # FreeSansBold12pt7b: capital/digit ascent 18px, advance 29px
+            f_size = -int(19 * self.scale)
             weight = "bold"
         else:
-            f_size = -int(17 * self.scale)
+            # FreeSansBold18pt7b: capital/digit ascent 25-26px, advance 42px
+            f_size = -int(26 * self.scale)
             weight = "bold"
 
-        font_spec = (self.font_family, f_size, weight)
+        font_spec = (self.tft_font_family, f_size, weight)
         tag_tx = f"tx_{x}_{y}"
         tag_bg = f"bg_{x}_{y}"
 

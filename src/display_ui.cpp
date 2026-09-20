@@ -140,11 +140,11 @@ void drawMobileHeader(const char* rightBadgeText, uint16_t badgeColor = TFT_YELL
     tft.setTextColor(modeCol, 0x0841);
     tft.drawString(modeStr, badgeX, 2);
 
-    badgeX -= 28;
+    badgeX -= 32;
     tft.setTextColor(sysStatus.sd_present ? TFT_GREEN : 0x52AA, 0x0841);
     tft.drawString("SD", badgeX, 2);
 
-    badgeX -= 36;
+    badgeX -= 44;
 #if ENABLE_WIFI_WEBSERVER
     tft.setTextColor(TFT_CYAN, 0x0841);
 #else
@@ -1115,10 +1115,10 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || cur_h1_set_tenth != last_h1_set_tenth) {
         char setBuf[32];
         snprintf(setBuf, sizeof(setBuf), "SET: %.1f C", recipes[sysStatus.active_program_idx].h1_setpoint_c);
-        tft.fillRect(10, 108, 140, 21, TFT_BLACK);
+        tft.fillRect(10, 111, 140, 18, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(setBuf, 14, 111);
+        tft.drawString(setBuf, 14, 113);
         last_h1_set_tenth = cur_h1_set_tenth;
     }
 #endif
@@ -1150,10 +1150,10 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || cur_h2_set_tenth != last_h2_set_tenth) {
         char setBuf[32];
         snprintf(setBuf, sizeof(setBuf), "SET: %.1f C", recipes[sysStatus.active_program_idx].h2_setpoint_c);
-        tft.fillRect(168, 108, 140, 21, TFT_BLACK);
+        tft.fillRect(168, 111, 140, 18, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(setBuf, 172, 111);
+        tft.drawString(setBuf, 172, 113);
         last_h2_set_tenth = cur_h2_set_tenth;
     }
 #endif
@@ -1180,10 +1180,10 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || cur_unit != last_tq_unit) {
         char limBuf[32];
         snprintf(limBuf, sizeof(limBuf), "UNIT: %s", getTorqueUnitName(cur_unit));
-        tft.fillRect(10, 177, 140, 21, TFT_BLACK);
+        tft.fillRect(10, 179, 140, 18, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(limBuf, 14, 180);
+        tft.drawString(limBuf, 14, 181);
     }
 
     // 7. Card 4: Process Timer
@@ -1211,10 +1211,10 @@ void drawHomeScreen(bool fullRedraw) {
     if (fullRedraw || cur_total_time != last_total_time) {
         char totBuf[32];
         snprintf(totBuf, sizeof(totBuf), "TOTAL: %us", (unsigned)cur_total_time);
-        tft.fillRect(168, 177, 140, 21, TFT_BLACK);
+        tft.fillRect(168, 179, 140, 18, TFT_BLACK);
         tft.setFreeFont(FONT_FREE_BOLD_9);
         tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        tft.drawString(totBuf, 172, 180);
+        tft.drawString(totBuf, 172, 181);
         last_total_time = cur_total_time;
     }
 
@@ -1231,7 +1231,7 @@ void drawHomeScreen(bool fullRedraw) {
             tft.setTextColor(TFT_RED, 0x0841);
             tft.drawString("[STOP]: Stop Cycle", 10, 212);
             tft.setTextColor(0x7BEF, 0x0841); // Dimmed grey
-            tft.drawString("[MENU]: Locked", 185, 212);
+            tft.drawString("[MENU]: Locked", 175, 212);
         } else {
             tft.setTextColor(TFT_WHITE, 0x0841);
             tft.drawString("[START]: Run", 10, 212);
