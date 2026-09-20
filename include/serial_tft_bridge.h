@@ -409,7 +409,10 @@ public:
 #if ENABLE_PHYSICAL_TFT
         if (_physical_enabled) {
             _inHighLevelText = true;
-            TFT_eSPI::drawCentreString(string, dX, poY, 1);
+            uint8_t oldDatum = TFT_eSPI::getTextDatum();
+            TFT_eSPI::setTextDatum(TC_DATUM);
+            TFT_eSPI::drawString(string, dX, poY);
+            TFT_eSPI::setTextDatum(oldDatum);
             _inHighLevelText = false;
         }
 #endif
@@ -422,6 +425,10 @@ public:
         }
 #endif
         return 0;
+    }
+
+    int16_t drawCentreString(const String &string, int32_t dX, int32_t poY) {
+        return drawCentreString(string.c_str(), dX, poY);
     }
 
     int16_t drawRightString(const char *string, int32_t dX, int32_t poY, uint8_t font) {
@@ -447,7 +454,10 @@ public:
 #if ENABLE_PHYSICAL_TFT
         if (_physical_enabled) {
             _inHighLevelText = true;
-            TFT_eSPI::drawRightString(string, dX, poY, 1);
+            uint8_t oldDatum = TFT_eSPI::getTextDatum();
+            TFT_eSPI::setTextDatum(TR_DATUM);
+            TFT_eSPI::drawString(string, dX, poY);
+            TFT_eSPI::setTextDatum(oldDatum);
             _inHighLevelText = false;
         }
 #endif
@@ -460,6 +470,10 @@ public:
         }
 #endif
         return 0;
+    }
+
+    int16_t drawRightString(const String &string, int32_t dX, int32_t poY) {
+        return drawRightString(string.c_str(), dX, poY);
     }
 
 private:

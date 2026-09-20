@@ -1051,83 +1051,86 @@ void drawHomeScreen(bool fullRedraw) {
     bool state_changed = (sysStatus.currentState != last_state || sysStatus.boot_ok != last_boot_ok || 
                           sysStatus.start_mode_auto != last_start_mode || sysStatus.active_program_idx != last_prog_idx);
 
-    if (fullRedraw || state_changed) {
-        uint16_t statusBorder = TFT_DARKCYAN;
-        uint16_t statusTextColor = TFT_WHITE;
-        const char *statusLine = "READY";
+    uint16_t statusBorder = TFT_DARKCYAN;
+    uint16_t statusTextColor = TFT_WHITE;
+    const char *statusLine = "READY";
 
-        switch (sysStatus.currentState) {
-            case STATE_IDLE:
-            case STATE_READY:
-                statusLine = sysStatus.start_mode_auto ? "READY (AUTO)" : "READY (MANUAL)";
-                statusBorder = 0x03E0; // Dark Green
-                statusTextColor = TFT_GREEN;
-                break;
-            case STATE_SAFETY_CHECK:
-                statusLine = "SAFETY CHECKS...";
-                statusBorder = TFT_YELLOW;
-                statusTextColor = TFT_YELLOW;
-                break;
-            case STATE_MOVE_DOWN:
-                statusLine = "PNEUMATIC EXTEND";
-                statusBorder = TFT_CYAN;
-                statusTextColor = TFT_CYAN;
-                break;
-            case STATE_DOWN_LIMIT:
-                statusLine = "AT DOWN LIMIT";
-                statusBorder = TFT_CYAN;
-                statusTextColor = TFT_CYAN;
-                break;
-            case STATE_HEAT_TO_SETPOINT:
-                statusLine = "HEATING...";
-                statusBorder = TFT_ORANGE;
-                statusTextColor = TFT_ORANGE;
-                break;
-            case STATE_TEMPERATURE_READY:
-                statusLine = "TEMP READY";
-                statusBorder = TFT_GREEN;
-                statusTextColor = TFT_GREEN;
-                break;
-            case STATE_PROCESS_TIMER:
-                statusLine = "TORQUE MOTOR RUN";
-                statusBorder = TFT_GREEN;
-                statusTextColor = TFT_GREEN;
-                break;
-            case STATE_TIMER_COMPLETE:
-                statusLine = "TIMER COMPLETE";
-                statusBorder = TFT_CYAN;
-                statusTextColor = TFT_CYAN;
-                break;
-            case STATE_MOVE_UP:
-                statusLine = "RETRACTING...";
-                statusBorder = TFT_CYAN;
-                statusTextColor = TFT_CYAN;
-                break;
-            case STATE_HOME_LIMIT:
-            case STATE_SAVE_RECORD:
-            case STATE_PROCESS_COMPLETE:
-                statusLine = "COMPLETE";
-                statusBorder = TFT_GREEN;
-                statusTextColor = TFT_GREEN;
-                break;
-            case STATE_ALARM_FAULT:
-                statusLine = sysStatus.alarm_msg[0] ? sysStatus.alarm_msg : "SAFETY TRIP";
-                statusBorder = TFT_RED;
-                statusTextColor = TFT_RED;
-                break;
-            default:
-                statusLine = "SYSTEM IDLE";
-                statusBorder = TFT_LIGHTGREY;
-                statusTextColor = TFT_WHITE;
-                break;
-        }
-
-        if (!sysStatus.boot_ok) {
-            statusLine = sysStatus.boot_msg[0] ? sysStatus.boot_msg : "BOOT FAILED";
+    switch (sysStatus.currentState) {
+        case STATE_IDLE:
+        case STATE_READY:
+            statusLine = sysStatus.start_mode_auto ? "READY (AUTO)" : "READY (MANUAL)";
+            statusBorder = 0x03E0; // Dark Green
+            statusTextColor = TFT_GREEN;
+            break;
+        case STATE_SAFETY_CHECK:
+            statusLine = "SAFETY CHECKS...";
+            statusBorder = TFT_YELLOW;
+            statusTextColor = TFT_YELLOW;
+            break;
+        case STATE_MOVE_DOWN:
+            statusLine = "PNEUMATIC EXTEND";
+            statusBorder = TFT_CYAN;
+            statusTextColor = TFT_CYAN;
+            break;
+        case STATE_DOWN_LIMIT:
+            statusLine = "AT DOWN LIMIT";
+            statusBorder = TFT_CYAN;
+            statusTextColor = TFT_CYAN;
+            break;
+        case STATE_HEAT_TO_SETPOINT:
+            statusLine = "HEATING...";
+            statusBorder = TFT_ORANGE;
+            statusTextColor = TFT_ORANGE;
+            break;
+        case STATE_TEMPERATURE_READY:
+            statusLine = "TEMP READY";
+            statusBorder = TFT_GREEN;
+            statusTextColor = TFT_GREEN;
+            break;
+        case STATE_PROCESS_TIMER:
+            statusLine = "TORQUE MOTOR RUN";
+            statusBorder = TFT_GREEN;
+            statusTextColor = TFT_GREEN;
+            break;
+        case STATE_TIMER_COMPLETE:
+            statusLine = "TIMER COMPLETE";
+            statusBorder = TFT_CYAN;
+            statusTextColor = TFT_CYAN;
+            break;
+        case STATE_MOVE_UP:
+            statusLine = "RETRACTING...";
+            statusBorder = TFT_CYAN;
+            statusTextColor = TFT_CYAN;
+            break;
+        case STATE_HOME_LIMIT:
+        case STATE_SAVE_RECORD:
+        case STATE_PROCESS_COMPLETE:
+            statusLine = "COMPLETE";
+            statusBorder = TFT_GREEN;
+            statusTextColor = TFT_GREEN;
+            break;
+        case STATE_ALARM_FAULT:
+            statusLine = sysStatus.alarm_msg[0] ? sysStatus.alarm_msg : "SAFETY TRIP";
             statusBorder = TFT_RED;
             statusTextColor = TFT_RED;
-        }
+            break;
+        default:
+            statusLine = "SYSTEM IDLE";
+            statusBorder = TFT_LIGHTGREY;
+            statusTextColor = TFT_WHITE;
+            break;
+    }
 
+    if (!sysStatus.boot_ok) {
+        statusLine = sysStatus.boot_msg[0] ? sysStatus.boot_msg : "BOOT FAILED";
+        statusBorder = TFT_RED;
+        statusTextColor = TFT_RED;
+    }
+
+    bool top_changed = (sysStatus.currentState != last_state || sysStatus.boot_ok != last_boot_ok || 
+                        sysStatus.active_program_idx != last_prog_idx);
+
+    if (fullRedraw || top_changed) {
         tft.drawRoundRect(6, 2, 308, 20, 3, statusBorder);
         tft.fillRect(7, 3, 306, 18, TFT_BLACK);
 
@@ -1136,19 +1139,14 @@ void drawHomeScreen(bool fullRedraw) {
         tft.setTextColor(TFT_CYAN, TFT_BLACK);
         tft.drawString("SUN SMART", 12, 4);
 
-        // 2. Middle: Selected Program Name (Bold)
+        // 2. Right: Selected Program Name (Bold)
         tft.setTextColor(TFT_YELLOW, TFT_BLACK);
         char pgmBuf[24];
         snprintf(pgmBuf, sizeof(pgmBuf), "%s", recipes[sysStatus.active_program_idx].name);
-        tft.drawCentreString(pgmBuf, 160, 4);
-
-        // 3. Right: Status (Bold)
-        tft.setTextColor(statusTextColor, TFT_BLACK);
-        tft.drawRightString(statusLine, 306, 4);
+        tft.drawRightString(pgmBuf, 306, 4);
 
         last_state = sysStatus.currentState;
         last_boot_ok = sysStatus.boot_ok;
-        last_start_mode = sysStatus.start_mode_auto;
         last_prog_idx = sysStatus.active_program_idx;
     }
 
@@ -1244,66 +1242,83 @@ void drawHomeScreen(bool fullRedraw) {
     // 6. Card 4: Process Timer (y = 116..200, h = 84)
     static uint32_t last_remaining = 0xFFFFFFFF;
     static int last_card4_prog = -1;
+    static ProcessState_t last_card4_state = (ProcessState_t)0xFF;
     bool timer_needs_update = fullRedraw || 
                               (sysStatus.remaining_time_sec != last_remaining) || 
-                              (sysStatus.active_program_idx != last_card4_prog);
+                              (sysStatus.active_program_idx != last_card4_prog) ||
+                              (sysStatus.currentState != last_card4_state);
     if (timer_needs_update) {
         tft.fillRect(168, 142, 140, 36, TFT_BLACK);
-        if (sysStatus.remaining_time_sec > 0) {
-            uint32_t t = sysStatus.remaining_time_sec;
-            uint32_t mm = t / 60;
-            uint32_t ss = t % 60;
-            uint32_t remUnits = (t * 100 + 59) / 60; // 100 units = 60s
-            char numBuf[16], unitBuf[16];
-            snprintf(numBuf, sizeof(numBuf), "%u", (unsigned)remUnits);
-            snprintf(unitBuf, sizeof(unitBuf), "(%02u:%02u)", (unsigned)mm, (unsigned)ss);
+        if (sysStatus.currentState == STATE_PROCESS_TIMER || sysStatus.currentState == STATE_TIMER_COMPLETE) {
+            uint32_t units = sysStatus.remaining_time_sec;
+            uint32_t mm = units / 100;
+            uint32_t ss = units % 100;
+            char timeBuf[16];
+            snprintf(timeBuf, sizeof(timeBuf), "%02u:%02u", (unsigned)mm, (unsigned)ss);
 
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_GREEN, TFT_BLACK);
-            tft.drawString(numBuf, 172, 148);
-            tft.setFreeFont(FONT_FREE_BOLD_9);
-            tft.drawString(unitBuf, 235, 150);
+            tft.drawString(timeBuf, 172, 148);
         } else {
             uint32_t pUnits = recipes[sysStatus.active_program_idx].process_time_sec;
-            uint32_t tSec = TIMER_UNITS_TO_SECONDS(pUnits);
-            uint32_t mm = tSec / 60;
-            uint32_t ss = tSec % 60;
-            char numBuf[16], unitBuf[16];
-            snprintf(numBuf, sizeof(numBuf), "%u", (unsigned)pUnits);
-            snprintf(unitBuf, sizeof(unitBuf), "(%02u:%02u)", (unsigned)mm, (unsigned)ss);
+            uint32_t mm = pUnits / 100;
+            uint32_t ss = pUnits % 100;
+            char timeBuf[16];
+            snprintf(timeBuf, sizeof(timeBuf), "%02u:%02u", (unsigned)mm, (unsigned)ss);
 
             tft.setFreeFont(FONT_FREE_BOLD_18);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.drawString(numBuf, 172, 148);
-            tft.setFreeFont(FONT_FREE_BOLD_9);
-            tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-            tft.drawString(unitBuf, 235, 150);
+            tft.drawString(timeBuf, 172, 148);
         }
         last_remaining = sysStatus.remaining_time_sec;
         last_card4_prog = sysStatus.active_program_idx;
+        last_card4_state = sysStatus.currentState;
     }
 
-    // 8. Footer Navigation Bar Dynamic Update (Running vs Idle) using compact Font 2
-    static int last_running_footer = -1;
+    // 8. Footer Navigation Bar Dynamic Update (with Centered Status)
+    static ProcessState_t last_footer_state = (ProcessState_t)0xFF;
+    static bool last_footer_boot = true;
+    static bool last_footer_auto = false;
     bool is_running = (sysStatus.currentState != STATE_IDLE && 
                        sysStatus.currentState != STATE_READY && 
                        sysStatus.currentState != STATE_ALARM_FAULT);
-    if (fullRedraw || (int)is_running != last_running_footer) {
+    bool footer_changed = (sysStatus.currentState != last_footer_state || 
+                           sysStatus.boot_ok != last_footer_boot ||
+                           sysStatus.start_mode_auto != last_footer_auto);
+    if (fullRedraw || footer_changed) {
         tft.fillRect(0, 206, 320, 30, 0x0841);
         tft.drawFastHLine(0, 206, 320, TFT_DARKCYAN);
         tft.setTextFont(2);
+
         if (is_running) {
+            // Left: Stop (moved to x = 6)
             tft.setTextColor(TFT_RED, 0x0841);
-            tft.drawString("[STOP]: Stop Cycle", 10, 213);
-            tft.setTextColor(0x7BEF, 0x0841); // Dimmed grey
-            tft.drawString("[MENU]: Locked", 210, 213);
+            tft.drawString("[STOP] Stop", 6, 213);
+
+            // Middle: Status (Centered at x = 160)
+            tft.setTextColor(statusTextColor, 0x0841);
+            tft.drawCentreString(statusLine, 160, 213);
+
+            // Right: Menu Locked (Right-aligned at x = 314)
+            tft.setTextColor(0x7BEF, 0x0841);
+            tft.drawRightString("[MENU] Lock", 314, 213);
         } else {
+            // Left: Start (moved to x = 6)
             tft.setTextColor(TFT_WHITE, 0x0841);
-            tft.drawString("[START]: Run", 10, 213);
-            tft.drawString("[->]: Menu", 235, 213);
+            tft.drawString("[START] Run", 6, 213);
+
+            // Middle: Status (Centered at x = 160)
+            tft.setTextColor(statusTextColor, 0x0841);
+            tft.drawCentreString(statusLine, 160, 213);
+
+            // Right: Menu (Right-aligned at x = 314)
+            tft.setTextColor(TFT_WHITE, 0x0841);
+            tft.drawRightString("[->] Menu", 314, 213);
         }
         tft.setFreeFont(FONT_FREE_BOLD_9);
-        last_running_footer = (int)is_running;
+        last_footer_state = sysStatus.currentState;
+        last_footer_boot = sysStatus.boot_ok;
+        last_footer_auto = sysStatus.start_mode_auto;
     }
 
     // 9. Bottom Accent Strip (y=236..240)
@@ -1487,7 +1502,7 @@ void drawRecipesListScreen(bool fullRedraw) {
             char h1Buf[16], h2Buf[16], tBuf[16];
             snprintf(h1Buf, sizeof(h1Buf), "%.0fC", recipes[idx].h1_setpoint_c);
             snprintf(h2Buf, sizeof(h2Buf), "%.0fC", recipes[idx].h2_setpoint_c);
-            snprintf(tBuf, sizeof(tBuf), "%u", (unsigned)recipes[idx].process_time_sec);
+            snprintf(tBuf, sizeof(tBuf), "%02u:%02u", (unsigned)(recipes[idx].process_time_sec / 100), (unsigned)(recipes[idx].process_time_sec % 100));
             tft.drawString(h1Buf, h1X, curY + 6);
             tft.drawString(h2Buf, h2X, curY + 6);
             tft.drawString(tBuf, timeX, curY + 6);
@@ -1500,7 +1515,7 @@ void drawRecipesListScreen(bool fullRedraw) {
             char h1Buf[16], h2Buf[16], tBuf[16];
             snprintf(h1Buf, sizeof(h1Buf), "%.0fC", recipes[idx].h1_setpoint_c);
             snprintf(h2Buf, sizeof(h2Buf), "%.0fC", recipes[idx].h2_setpoint_c);
-            snprintf(tBuf, sizeof(tBuf), "%u", (unsigned)recipes[idx].process_time_sec);
+            snprintf(tBuf, sizeof(tBuf), "%02u:%02u", (unsigned)(recipes[idx].process_time_sec / 100), (unsigned)(recipes[idx].process_time_sec % 100));
             tft.drawString(h1Buf, h1X, curY + 6);
             tft.drawString(h2Buf, h2X, curY + 6);
             tft.drawString(tBuf, timeX, curY + 6);
@@ -1589,8 +1604,8 @@ void drawProgramEditScreen(bool fullRedraw) {
     snprintf(valBuffers[0], sizeof(valBuffers[0]), "%s", rec.name);
     snprintf(valBuffers[1], sizeof(valBuffers[1]), "%.1f C", rec.h1_setpoint_c);
     snprintf(valBuffers[2], sizeof(valBuffers[2]), "%.1f C", rec.h2_setpoint_c);
-    uint32_t tSec = TIMER_UNITS_TO_SECONDS(rec.process_time_sec);
-    snprintf(valBuffers[3], sizeof(valBuffers[3]), "%u (%02u:%02u)", (unsigned)rec.process_time_sec, (unsigned)(tSec / 60), (unsigned)(tSec % 60));
+    uint32_t pUnits = rec.process_time_sec;
+    snprintf(valBuffers[3], sizeof(valBuffers[3]), "%02u:%02u", (unsigned)(pUnits / 100), (unsigned)(pUnits % 100));
     snprintf(valBuffers[4], sizeof(valBuffers[4]), "%+.1f C", rec.temp_tolerance_c);
     snprintf(valBuffers[5], sizeof(valBuffers[5]), "%+.1f %%", rec.h1_temp_offset_pct);
     snprintf(valBuffers[6], sizeof(valBuffers[6]), "%+.1f %%", rec.h2_temp_offset_pct);

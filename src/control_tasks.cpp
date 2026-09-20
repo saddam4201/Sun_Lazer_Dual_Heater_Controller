@@ -36,6 +36,7 @@ void Task_SafetyAndControl(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     uint32_t movement_timer_ms = 0;
     static bool s_processAbortedByLimitSwitch = false;
+    static uint32_t s_process_timer_start_ms = 0;
 
     esp_task_wdt_add(NULL);
 
@@ -266,8 +267,9 @@ void Task_SafetyAndControl(void *pvParameters) {
                     transitionToState(STATE_MOVE_UP);
                     break;
                 }
-                // Convert 100-base units to seconds: 100 units = 1 min (60 seconds)
-                sysStatus.remaining_time_sec = TIMER_UNITS_TO_SECONDS(recipes[sysStatus.active_program_idx].process_time_sec);
+                // Initialize process timer in 100-base units (100 units = 60s, 1 unit = 600ms)
+                sysStatus.remaining_time_sec = recipes[sysStatus.active_program_idx].process_time_sec;
+                s_process_timer_start_ms = millis();
                 transitionToState(STATE_PROCESS_TIMER);
                 break;
 
@@ -291,8 +293,16 @@ void Task_SafetyAndControl(void *pvParameters) {
                     transitionToState(STATE_MOVE_UP);
                     break;
                 }
-                if (sysStatus.remaining_time_sec == 0) {
-                    transitionToState(STATE_TIMER_COMPLETE);
+                {
+                    uint32_t totalUnits = recipes[sysStatus.active_program_idx].process_time_sec;
+                    uint32_t totalDurationMs = totalUnits * 600UL; // 1 unit = 600ms fast countdown (100 units = 60.0s)
+                    uint32_t elapsedMs = millis() - s_process_timer_start_ms;
+                    if (elapsedMs >= totalDurationMs) {
+                        sysStatus.remaining_time_sec = 0;
+                        transitionToState(STATE_TIMER_COMPLETE);
+                    } else {
+                        sysStatus.remaining_time_sec = totalUnits - (elapsedMs / 600UL);
+                    }
                 }
                 break;
 
@@ -575,19 +585,6 @@ void Task_TemperaturePID(void *pvParameters) {
             safeDigitalWrite(PIN_SSR_1, LOW);
             safeDigitalWrite(PIN_SSR_2, LOW);
         }
-
-        static ProcessState_t s_last_timer_state = STATE_IDLE;
-        static uint8_t tick_count = 0;
-        if (sysStatus.currentState == STATE_PROCESS_TIMER) {
-            if (s_last_timer_state != STATE_PROCESS_TIMER) {
-                tick_count = 0; // Reset on entry so first second is a full 1000ms
-            }
-            if (++tick_count >= 10) {
-                tick_count = 0;
-                if (sysStatus.remaining_time_sec > 0) sysStatus.remaining_time_sec--;
-            }
-        }
-        s_last_timer_state = sysStatus.currentState;
 
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
     }

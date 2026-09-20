@@ -92,11 +92,12 @@ void vd_drawHomeScreen() {
 
     // Timer display
     if (sysStatus.remaining_time_sec > 0) {
-        uint32_t mm = sysStatus.remaining_time_sec / 60;
-        uint32_t ss = sysStatus.remaining_time_sec % 60;
-        Serial.printf("Timer: %02u:%02u (s=%u)\n", (unsigned)mm, (unsigned)ss, (unsigned)sysStatus.remaining_time_sec);
+        uint32_t mm = sysStatus.remaining_time_sec / 100;
+        uint32_t ss = sysStatus.remaining_time_sec % 100;
+        Serial.printf("Timer: %02u:%02u (units=%u)\n", (unsigned)mm, (unsigned)ss, (unsigned)sysStatus.remaining_time_sec);
     } else {
-        Serial.println("Timer: --:--");
+        uint32_t pUnits = recipes[sysStatus.active_program_idx].process_time_sec;
+        Serial.printf("Timer: %02u:%02u (setpoint units=%u)\n", (unsigned)(pUnits / 100), (unsigned)(pUnits % 100), (unsigned)pUnits);
     }
 
     // Status
@@ -158,8 +159,9 @@ void vd_drawProgramSelectScreen() {
     Serial.println("[VIRT_TFT] === PROGRAM SELECT ===");
     for (int i = 0; i < 10; i++) {
         const char *cursor = (sysStatus.active_program_idx == i) ? "-> " : "   ";
-        Serial.printf("%s%-16s | H1: %.1f C | H2: %.1f C | Time: %us\n",
-                      cursor, recipes[i].name, recipes[i].h1_setpoint_c, recipes[i].h2_setpoint_c, (unsigned)recipes[i].process_time_sec);
+        uint32_t pUnits = recipes[i].process_time_sec;
+        Serial.printf("%s%-16s | H1: %.1f C | H2: %.1f C | Time: %02u:%02u\n",
+                      cursor, recipes[i].name, recipes[i].h1_setpoint_c, recipes[i].h2_setpoint_c, (unsigned)(pUnits / 100), (unsigned)(pUnits % 100));
     }
     Serial.printf("Active program: %s\n", recipes[sysStatus.active_program_idx].name);
     Serial.println("[VIRT_TFT] Nav: [1/UP, 2/DN]: Select Recipe | [4/->]: Edit Recipe | [3/<-]: Back to Home");
@@ -198,7 +200,7 @@ void vd_drawProgramEditScreen() {
     Serial.printf("[VIRT_TFT] === PROGRAM EDIT (%s) ===\n", rec.name);
     Serial.printf("  1. H1 Target Temp : %.1f C\n", rec.h1_setpoint_c);
     Serial.printf("  2. H2 Target Temp : %.1f C\n", rec.h2_setpoint_c);
-    Serial.printf("  3. Process Time   : %u s\n", (unsigned)rec.process_time_sec);
+    Serial.printf("  3. Process Time   : %02u:%02u (units=%u)\n", (unsigned)(rec.process_time_sec / 100), (unsigned)(rec.process_time_sec % 100), (unsigned)rec.process_time_sec);
     Serial.printf("  4. Temp Tolerance : %+.1f C\n", rec.temp_tolerance_c);
     Serial.printf("  5. H1 Offset %%    : %+.1f %%\n", rec.h1_temp_offset_pct);
     Serial.printf("  6. H2 Offset %%    : %+.1f %%\n", rec.h2_temp_offset_pct);
